@@ -14,27 +14,28 @@ Most networking systems treat failure like this:
 - reconnect  
 - session rebuilt  
 
-This causes:
+This leads to:
 
 - packet loss  
 - broken ordering  
-- user-visible interruption  
+- state reset  
+- visible interruption  
 
 ---
 
-## This demo explores a different model
+## A different model
 
 Instead of:
 
 failure → reconnect → restore
 
-we model:
+This demo models:
 
 failure → runtime transition → continuity preserved
 
 ---
 
-## Core Idea
+## Core idea
 
 Not connection-centric:
 
@@ -53,13 +54,58 @@ Where:
 
 ---
 
-## What happens in this demo
+## What this demo models
+
+This is not just a print demo.
+
+### Transport behavior
+
+- multiple transports (WiFi / 5G / LTE)  
+- latency + jitter simulation  
+- packet loss  
+
+### Runtime decisions
+
+- scoring-based path selection  
+- adaptive multipath (enabled only under degradation)  
+- latency racing (fastest path wins)  
+
+### Stream continuity
+
+- packet duplication during migration  
+- deduplication  
+- reorder buffer  
+- partial ordering  
+
+### Reliability layer
+
+- session-level ACK tracking  
+- retransmission queue  
+- frame assembly  
+- forward error correction (FEC simulation)  
+
+### Session model
+
+- explicit session identity  
+- epoch-based authority  
+- stale transport rejection  
+
+### Observability
+
+- structured trace (JSON events)  
+- timeline reconstruction  
+- replay system  
+- invariant checks (e.g. epoch monotonicity)  
+
+---
+
+## Example flow
 
 WiFi fails  
 ↓  
 runtime detects degradation  
 ↓  
-adaptive overlap enabled (WiFi + 5G)  
+adaptive overlap starts (WiFi + 5G)  
 ↓  
 latency racing selects fastest path  
 ↓  
@@ -67,86 +113,55 @@ authority transferred (epoch++)
 ↓  
 stale path rejected  
 ↓  
+packet loss partially recovered (FEC / retransmit)  
+↓  
 stream continues  
 
 ---
 
-## What is actually implemented
-
-This is not a print demo.
-
-### Transport Simulation
-
-- multiple transports (WiFi / 5G / LTE)
-- scoring-based selection
-- latency + jitter
-- packet loss
-
-### Runtime Behavior
-
-- explicit state transitions  
-  ATTACHED → RECOVERING → ATTACHED  
-- adaptive multipath (only under degradation)
-- latency racing (fastest path wins)
-- packet duplication during migration
-- deduplication
-- reorder buffer (ordered delivery restored)
-
-### Continuity Guarantees (simulated)
-
-- no reconnect  
-- no session reset  
-- no silent failure  
-- stale path rejection  
-- stream continuity preserved  
-
----
-
-## Example Output
+## Example output
 
 [EVENT] WiFi failed  
 [DECISION] migrate=true (margin=87.8, confidence=1.00)  
 [STATE] ATTACHED → RECOVERING  
-[MULTIPATH] starting overlap (wifi + 5G)  
-[RACE] winner=5g (42ms)  
+[MULTIPATH] starting overlap  
+[RACE] winner=5g  
 [AUTHORITY] epoch 2 granted  
 [CHECK] stale wifi rejected  
+[FEC] recovered missing packet  
+[FRAME] frame assembled  
 [STATE] RECOVERING → ATTACHED  
 [RESULT] session continues  
 
 ---
 
-## Why this is interesting
+## What this is NOT
 
 This is not:
 
-- retry logic  
-- reconnect strategy  
-- failover script  
-
-This is:
-
-a runtime model where continuity is enforced as a system property  
+- a VPN implementation  
+- a retry mechanism  
+- a reconnect strategy  
 
 ---
 
-## What this could lead to
+## What this could become
 
 If extended beyond simulation:
 
 - zero-loss handoff between networks  
 - seamless WiFi ↔ 5G switching  
-- transport-layer continuity independent of IP  
-- session persistence across unstable paths  
-- new class of VPN / overlay protocols  
+- transport-independent sessions  
+- runtime-level continuity guarantees  
+- new class of session-centric protocols  
 
 ---
 
-## Research Direction
+## Research direction
 
-The question this explores:
+The question:
 
-Can a system guarantee session continuity even when transports fail?
+Can session continuity be enforced as a system invariant even when transports fail?
 
 If yes:
 
@@ -158,23 +173,16 @@ not a terminal condition
 ## Status
 
 Early prototype.  
-Focused on modeling behavior, not production networking.
+Focused on runtime behavior and continuity modeling.
 
 ---
 
-## Next Steps
+## Next steps
 
 - real transport integration (UDP / QUIC)  
-- real packet scheduling  
-- forward error correction (FEC)  
-- session-level ACK + retransmission  
-- multi-node / relay simulation  
-
----
-
-## Repo
-
-https://github.com/Endless33/continuity-runtime-demo
+- congestion control  
+- real FEC  
+- protocol-level design  
 
 ---
 
@@ -184,7 +192,7 @@ Looking for:
 
 - critical feedback  
 - edge cases  
-- architectural challenges  
+- architectural concerns  
 
 ---
 
