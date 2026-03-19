@@ -7,12 +7,12 @@ import (
 )
 
 func main() {
-	fmt.Println("HANDSHAKE DEMO")
+	fmt.Println("HANDSHAKE DEMO (LOSSY EXCHANGE)")
 	fmt.Println()
 
 	client := runtime.NewNode("client")
 	server := runtime.NewNode("server")
-	ex := runtime.NewExchange("handshake")
+	ex := runtime.NewLossyExchange("handshake")
 
 	initPkt := client.StartHandshake()
 
@@ -24,7 +24,7 @@ func main() {
 	}
 
 	if resp == nil {
-		fmt.Println("[ERROR] server did not produce init ack")
+		fmt.Println("[WARN] init packet dropped or no init ack produced")
 		return
 	}
 
