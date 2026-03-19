@@ -6,65 +6,83 @@ type State string
 type Event string
 
 const (
-	// States
 	StateAttached   State = "ATTACHED"
 	StateRecovering State = "RECOVERING"
 
-	// Events
 	EventWiFiFailed Event = "WiFi failed"
 )
 
-// Runtime represents a simple state machine
+type Transport struct {
+	Name  string
+	Score float64
+}
+
 type Runtime struct {
-	state State
-	epoch int
+	state      State
+	epoch      int
+	current    Transport
+	candidates []Transport
 }
 
 func NewRuntime() *Runtime {
 	return &Runtime{
 		state: StateAttached,
 		epoch: 1,
+		current: Transport{
+			Name:  "wifi",
+			Score: 20,
+		},
+		candidates: []Transport{
+			{Name: "5g", Score: 100},
+			{Name: "lte", Score: 60},
+		},
 	}
 }
 
 func (r *Runtime) HandleEvent(e Event) {
 	switch e {
-
 	case EventWiFiFailed:
 		r.onWiFiFailed()
-
-	default:
-		fmt.Println("[WARN] unknown event")
 	}
 }
 
 func (r *Runtime) onWiFiFailed() {
 	fmt.Println("[EVENT] WiFi failed")
 
-	// Step 1: evaluate decision
-	fmt.Println("[DECISION] evaluating alternative path...")
-	migrate := true
+	best := r.selectBestTransport()
 
-	if migrate {
-		fmt.Println("[DECISION] migrate=true (better path detected)")
+	fmt.Printf("[DECISION] best candidate: %s (score=%.1f)\n", best.Name, best.Score)
 
-		// Step 2: state transition
+	if best.Score > r.current.Score {
+		fmt.Println("[DECISION] migrate=true")
+
 		r.transition(StateRecovering)
 
-		// Step 3: authority transfer
 		r.epoch++
-		fmt.Printf("[AUTHORITY] epoch %d granted to 5G\n", r.epoch)
+		fmt.Printf("[AUTHORITY] epoch %d granted to %s\n", r.epoch, best.Name)
 
-		// Step 4: reject stale transport
-		fmt.Println("[CHECK] stale WiFi transport rejected")
+		fmt.Printf("[CHECK] stale %s rejected\n", r.current.Name)
 
-		// Step 5: return to attached
+		r.current = best
+
 		r.transition(StateAttached)
 
-		fmt.Println("[RESULT] session continues (no reconnect, no reset)")
+		fmt.Println("[RESULT] session continues (no reconnect)")
 	} else {
-		fmt.Println("[RESULT] stay on current transport")
+		fmt.Println("[RESULT] no better transport found")
 	}
+}
+
+func (r *Runtime) selectBestTransport() Transport {
+	best := r.candidates[0]
+
+	for _, t := range r.candidates {
+		if t.Score > best.Score {
+			best = t
+		}
+	}
+
+	return best
 }
 
 func (r *Runtime) transition(newState State) {
@@ -73,11 +91,10 @@ func (r *Runtime) transition(newState State) {
 }
 
 func main() {
-	fmt.Println("CONTINUITY RUNTIME DEMO")
+	fmt.Println("CONTINUITY RUNTIME DEMO (SCORING + MIGRATION)")
 	fmt.Println()
 
-	runtime := NewRuntime()
+	r := NewRuntime()
 
-	// simulate failure
-	runtime.HandleEvent(EventWiFiFailed)
+	r.HandleEvent(EventWiFiFailed)
 }
