@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	fmt.Println("TWO NODE PROTOCOL DEMO (LOSSY EXCHANGE + ACK EXCHANGE + MIGRATION)")
+	fmt.Println("TWO NODE PROTOCOL DEMO (LOSSY EXCHANGE + ACK + KEEPALIVE + CLOSE)")
 	fmt.Println()
 
 	client := runtime.NewNode("client")
@@ -36,8 +36,8 @@ func main() {
 	}
 
 	fmt.Println("\n=== PHASE 2: DATA PACKETS ===")
-	p1 := client.Engine.Protocol.BuildData([]byte("payload-1"))
-	p2 := client.Engine.Protocol.BuildData([]byte("payload-2"))
+	p1 := client.Engine.SendData([]byte("payload-1"))
+	p2 := client.Engine.SendData([]byte("payload-2"))
 
 	if err := acks.SendData(client, server, p1); err != nil {
 		fmt.Printf("[ERROR] failed to exchange p1: %v\n", err)
@@ -46,7 +46,15 @@ func main() {
 		fmt.Printf("[ERROR] failed to exchange p2: %v\n", err)
 	}
 
-	fmt.Println("\n=== PHASE 3: FAILURE + MIGRATION ===")
+	fmt.Println("\n=== PHASE 3: KEEPALIVE ===")
+	k := client.Engine.SendKeepalive()
+	if k.Type != "" {
+		if _, err := forward.Send(client, server, k); err != nil {
+			fmt.Printf("[ERROR] keepalive failed: %v\n", err)
+		}
+	}
+
+	fmt.Println("\n=== PHASE 4: FAILURE + MIGRATION ===")
 	client.Engine.Runtime.HandleEvent(runtime.EventWiFiFailed)
 
 	if err := client.Engine.StartMigration(client.Engine.Runtime.Current.Name); err != nil {
@@ -55,6 +63,7 @@ func main() {
 	}
 
 	req := protocol.WirePacket{
+		Version:   protocol.ProtocolVersion,
 		Type:      protocol.PacketTypeAuthorityTransfer,
 		SessionID: client.Engine.Protocol.SessionID,
 		Epoch:     client.Engine.Protocol.Epoch + 1,
@@ -70,15 +79,21 @@ func main() {
 		return
 	}
 
-	fmt.Println("\n=== PHASE 4: DATA AFTER MIGRATION ===")
-	p3 := client.Engine.Protocol.BuildData([]byte("payload-3"))
+	fmt.Println("\n=== PHASE 5: DATA AFTER MIGRATION ===")
+	p3 := client.Engine.SendData([]byte("payload-3"))
 	if err := acks.SendData(client, server, p3); err != nil {
 		fmt.Printf("[ERROR] failed to exchange p3: %v\n", err)
 	}
 
-	fmt.Println("\n=== PHASE 5: CLIENT INVARIANTS ===")
+	fmt.Println("\n=== PHASE 6: CLOSE ===")
+	closePkt := client.Engine.CloseSession(protocol.CloseReasonNormal)
+	if _, err := forward.Send(client, server, closePkt); err != nil {
+		fmt.Printf("[ERROR] close delivery failed: %v\n", err)
+	}
+
+	fmt.Println("\n=== PHASE 7: CLIENT INVARIANTS ===")
 	client.Engine.CheckProtocolInvariants()
 
-	fmt.Println("\n=== PHASE 6: SERVER INVARIANTS ===")
+	fmt.Println("\n=== PHASE 8: SERVER INVARIANTS ===")
 	server.Engine.CheckProtocolInvariants()
 }
