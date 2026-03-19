@@ -8,14 +8,14 @@ import (
 )
 
 func main() {
-	fmt.Println("MIGRATION DEMO")
+	fmt.Println("MIGRATION DEMO (LOSSY EXCHANGE)")
 	fmt.Println()
 
 	client := runtime.NewNode("client")
 	server := runtime.NewNode("server")
-	ex := runtime.NewExchange("migration")
+	ex := runtime.NewLossyExchange("migration")
 
-	// Handshake first
+	// Handshake
 	initPkt := client.StartHandshake()
 	resp, err := ex.Send(client, server, initPkt)
 	if err != nil {
@@ -23,7 +23,7 @@ func main() {
 		return
 	}
 	if resp == nil {
-		fmt.Println("[ERROR] missing init ack")
+		fmt.Println("[WARN] init dropped or missing init ack")
 		return
 	}
 	if _, err := ex.Send(server, client, *resp); err != nil {
