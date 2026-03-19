@@ -12,23 +12,25 @@ func main() {
 
 	client := runtime.NewNode("client")
 	server := runtime.NewNode("server")
+	ex := runtime.NewExchange("handshake")
 
 	initPkt := client.StartHandshake()
 
 	fmt.Println("\n=== SERVER RECEIVES INIT ===")
-	ackPkt, err := server.Receive(initPkt)
+	resp, err := ex.Send(client, server, initPkt)
 	if err != nil {
 		fmt.Printf("[ERROR] server failed to handle init: %v\n", err)
 		return
 	}
 
-	if ackPkt == nil {
+	if resp == nil {
 		fmt.Println("[ERROR] server did not produce init ack")
 		return
 	}
 
 	fmt.Println("\n=== CLIENT RECEIVES INIT ACK ===")
-	if _, err := client.Receive(*ackPkt); err != nil {
+	_, err = ex.Send(server, client, *resp)
+	if err != nil {
 		fmt.Printf("[ERROR] client failed to handle init ack: %v\n", err)
 		return
 	}
