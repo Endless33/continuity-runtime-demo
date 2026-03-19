@@ -8,24 +8,29 @@ import (
 )
 
 type Engine struct {
-	Runtime      *Runtime
-	Protocol     *protocol.SessionProtocol
-	Invariant    *protocol.InvariantChecker
-	Authority    *protocol.AuthorityRules
-	Timeouts     *protocol.TimeoutPolicy
-	Retransmit   *protocol.RetransmissionPolicy
+	Runtime    *Runtime
+	Protocol   *protocol.SessionProtocol
+	Invariant  *protocol.InvariantChecker
+	Authority  *protocol.AuthorityRules
+	Timeouts   *protocol.TimeoutPolicy
+	Retransmit *protocol.RetransmissionPolicy
+	Keepalive  *protocol.KeepaliveEngine
+	Close      *protocol.CloseEngine
 }
 
 func NewEngine() *Engine {
 	rt := NewRuntime()
+	timeouts := protocol.NewTimeoutPolicy()
 
 	return &Engine{
 		Runtime:    rt,
 		Protocol:   protocol.NewSessionProtocol("sess-001", rt.Current.Name),
 		Invariant:  protocol.NewInvariantChecker(),
 		Authority:  protocol.NewAuthorityRules(),
-		Timeouts:   protocol.NewTimeoutPolicy(),
+		Timeouts:   timeouts,
 		Retransmit: protocol.NewRetransmissionPolicy(),
+		Keepalive:  protocol.NewKeepaliveEngine(timeouts.KeepaliveInterval),
+		Close:      protocol.NewCloseEngine(),
 	}
 }
 
@@ -52,13 +57,13 @@ func (e *Engine) SendData(payload []byte) protocol.WirePacket {
 	pkt := e.Protocol.BuildData(payload)
 
 	e.Runtime.Trace.Record("protocol_data", "data packet built", map[string]interface{}{
-		"seq":             pkt.Seq,
-		"epoch":           pkt.Epoch,
-		"path":            pkt.Path,
-		"version":         pkt.Version,
-		"payload_size":    len(pkt.Payload),
-		"ack_timeout_ms":  e.Timeouts.AckTimeout.Milliseconds(),
-		"max_retries":     e.Retransmit.MaxRetries,
+		"seq":            pkt.Seq,
+		"epoch":          pkt.Epoch,
+		"path":           pkt.Path,
+		"version":        pkt.Version,
+		"payload_size":   len(pkt.Payload),
+		"ack_timeout_ms": e.Timeouts.AckTimeout.Milliseconds(),
+		"max_retries":    e.Retransmit.MaxRetries,
 	})
 
 	fmt.Printf("[PROTOCOL] data seq=%d epoch=%d path=%s version=%d\n",
@@ -77,12 +82,12 @@ func (e *Engine) StartMigration(candidatePath string) error {
 	auth := e.Authority.CanStartTransfer(e.Protocol, candidatePath, targetEpoch)
 
 	e.Runtime.Trace.Record("protocol_authority_start_check", "start transfer evaluated", map[string]interface{}{
-		"candidate_path":        candidatePath,
-		"target_epoch":          targetEpoch,
-		"allowed":               auth.Allowed,
-		"decision":              auth.Decision,
-		"reason":                auth.Reason,
-		"migration_timeout_ms":  e.Timeouts.MigrationTimeout.Milliseconds(),
+		"candidate_path":       candidatePath,
+		"target_epoch":         targetEpoch,
+		"allowed":              auth.Allowed,
+		"decision":             auth.Decision,
+		"reason":               auth.Reason,
+		"migration_timeout_ms": e.Timeouts.MigrationTimeout.Milliseconds(),
 	})
 
 	if !auth.Allowed {
@@ -194,6 +199,14 @@ func (e *Engine) Receive(pkt protocol.WirePacket) error {
 		return err
 	}
 
+	if pkt.Type == protocol.PacketTypeKeepalive {
+		e.Keepalive.MarkSeen(time.Now().UTC())
+	}
+
+	if pkt.Type == protocol.PacketTypeClose {
+		e.Close.Apply(e.Protocol)
+	}
+
 	e.Runtime.Trace.Record("protocol_accepted", "packet accepted", map[string]interface{}{
 		"type":    pkt.Type,
 		"seq":     pkt.Seq,
@@ -256,6 +269,61 @@ func (e *Engine) SimulateRetransmission(seq int, attempt int) {
 		backoff,
 	)
 	time.Sleep(backoff / 10)
+}
+
+func (e *Engine) SendKeepalive() protocol.WirePacket {
+	now := time.Now().UTC()
+
+	if !e.Keepalive.ShouldSend(now) {
+		return protocol.WirePacket{}
+	}
+
+	pkt := e.Keepalive.Build(e.Protocol)
+	e.Keepalive.MarkSent(now)
+
+	e.Runtime.Trace.Record("protocol_keepalive_sent", "keepalive sent", map[string]interface{}{
+		"epoch":   pkt.Epoch,
+		"path":    pkt.Path,
+		"version": pkt.Version,
+	})
+
+	fmt.Printf("[PROTOCOL] keepalive sent epoch=%d path=%s\n", pkt.Epoch, pkt.Path)
+	return pkt
+}
+
+func (e *Engine) CheckIdleTimeout() bool {
+	expired := e.Keepalive.IsExpired(time.Now().UTC(), e.Timeouts.IdleSessionTimeout)
+
+	e.Runtime.Trace.Record("protocol_idle_check", "idle timeout evaluated", map[string]interface{}{
+		"expired":         expired,
+		"idle_timeout_ms": e.Timeouts.IdleSessionTimeout.Milliseconds(),
+	})
+
+	if expired {
+		fmt.Println("[PROTOCOL] idle timeout expired")
+	}
+
+	return expired
+}
+
+func (e *Engine) CloseSession(reason protocol.CloseReason) protocol.WirePacket {
+	pkt := e.Close.Build(e.Protocol, reason)
+	e.Close.Apply(e.Protocol)
+
+	e.Runtime.Trace.Record("protocol_close", "session closed", map[string]interface{}{
+		"reason":  reason,
+		"epoch":   pkt.Epoch,
+		"path":    pkt.Path,
+		"version": pkt.Version,
+	})
+
+	fmt.Printf("[PROTOCOL] close session reason=%s epoch=%d path=%s\n",
+		reason,
+		pkt.Epoch,
+		pkt.Path,
+	)
+
+	return pkt
 }
 
 func (e *Engine) printInvariant(res protocol.InvariantResult) {
