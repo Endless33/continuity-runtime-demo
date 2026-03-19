@@ -15,6 +15,7 @@ const (
 )
 
 type WirePacket struct {
+	Version   uint16     `json:"version"`
 	Type      PacketType `json:"type"`
 	SessionID string     `json:"session_id"`
 	Epoch     int        `json:"epoch"`
