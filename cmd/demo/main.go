@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	fmt.Println("CONTINUITY RUNTIME DEMO (ENGINE + PROTOCOL + STREAM)")
+	fmt.Println("CONTINUITY RUNTIME DEMO (ENGINE + PROTOCOL + STREAM + INVARIANTS)")
 	fmt.Println()
 
 	engine := runtime.NewEngine()
@@ -38,6 +38,8 @@ func main() {
 		return
 	}
 
+	engine.CheckProtocolInvariants()
+
 	fmt.Println("\n=== PHASE 6: STREAM DURING / AFTER MIGRATION ===")
 	stream.Send(5)
 
@@ -52,7 +54,7 @@ func main() {
 	replay := runtime.NewReplayEngine(r.Trace.Events)
 	replay.Run()
 
-	fmt.Println("\n=== PHASE 10: INVARIANTS ===")
+	fmt.Println("\n=== PHASE 10: RUNTIME INVARIANTS ===")
 	checker := runtime.NewInvariantChecker()
 	checker.Check(r.Trace.Events)
 }
