@@ -3,11 +3,12 @@ package main
 import (
 	"fmt"
 
+	"continuity-runtime-demo/internal/protocol"
 	"continuity-runtime-demo/internal/runtime"
 )
 
 func main() {
-	fmt.Println("HANDSHAKE DEMO (LOSSY EXCHANGE)")
+	fmt.Println("HANDSHAKE DEMO (LOSSY EXCHANGE + KEEPALIVE + CLOSE)")
 	fmt.Println()
 
 	client := runtime.NewNode("client")
@@ -33,6 +34,27 @@ func main() {
 	if err != nil {
 		fmt.Printf("[ERROR] client failed to handle init ack: %v\n", err)
 		return
+	}
+
+	fmt.Println("\n=== KEEPALIVE EXCHANGE ===")
+	k1 := client.Engine.SendKeepalive()
+	if k1.Type != "" {
+		if _, err := ex.Send(client, server, k1); err != nil {
+			fmt.Printf("[ERROR] client keepalive failed: %v\n", err)
+		}
+	}
+
+	k2 := server.Engine.SendKeepalive()
+	if k2.Type != "" {
+		if _, err := ex.Send(server, client, k2); err != nil {
+			fmt.Printf("[ERROR] server keepalive failed: %v\n", err)
+		}
+	}
+
+	fmt.Println("\n=== CLOSE SESSION ===")
+	closePkt := client.Engine.CloseSession(protocol.CloseReasonNormal)
+	if _, err := ex.Send(client, server, closePkt); err != nil {
+		fmt.Printf("[ERROR] close delivery failed: %v\n", err)
 	}
 
 	fmt.Println("\n=== RESULT ===")
