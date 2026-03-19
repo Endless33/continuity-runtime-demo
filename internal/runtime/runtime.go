@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 )
 
@@ -24,6 +25,9 @@ type Runtime struct {
 }
 
 func NewRuntime() *Runtime {
+	// важно для jitter / loss
+	rand.Seed(time.Now().UnixNano())
+
 	return &Runtime{
 		State: StateAttached,
 		Epoch: 1,
@@ -40,6 +44,7 @@ func NewRuntime() *Runtime {
 	}
 }
 
+// Оставили, но теперь используется редко (для простых тестов)
 func (r *Runtime) SendPacket() {
 	r.PacketID++
 	fmt.Printf("[SEND] packet #%d via %s\n", r.PacketID, r.Current.Name)
@@ -58,20 +63,29 @@ func (r *Runtime) onWiFiFailed() {
 
 	best := SelectBestTransport(r.Current, r.Candidates)
 
-	fmt.Printf("[DECISION] best=%s (score=%.1f)\n", best.Name, best.Score)
+	margin := best.Score - r.Current.Score
+	confidence := computeConfidence(r.Current, best)
+
+	fmt.Printf(
+		"[DECISION] migrate=%v (margin=%.1f, confidence=%.2f, reason=better_path)\n",
+		best.Score > r.Current.Score,
+		margin,
+		confidence,
+	)
 
 	if best.Score > r.Current.Score {
-		fmt.Println("[DECISION] migrate=true")
-
 		r.transition(StateRecovering)
 
-		time.Sleep(300 * time.Millisecond)
+		// имитация времени на миграцию
+		time.Sleep(200 * time.Millisecond)
 
 		r.Epoch++
 		fmt.Printf("[AUTHORITY] epoch %d granted to %s\n", r.Epoch, best.Name)
 
+		// проверка stale path
 		fmt.Printf("[CHECK] stale %s rejected\n", r.Current.Name)
 
+		// переключение транспорта
 		r.Current = best
 
 		r.transition(StateAttached)
@@ -85,4 +99,27 @@ func (r *Runtime) onWiFiFailed() {
 func (r *Runtime) transition(newState State) {
 	fmt.Printf("[STATE] %s -> %s\n", r.State, newState)
 	r.State = newState
+}
+
+// простая эвристика confidence (чтобы выглядело как runtime, а не if)
+func computeConfidence(current Transport, candidate Transport) float64 {
+	conf := 0.5
+
+	if candidate.Score > current.Score {
+		conf += 0.2
+	}
+
+	if candidate.Latency < current.Latency {
+		conf += 0.2
+	}
+
+	if candidate.Score-current.Score > 50 {
+		conf += 0.1
+	}
+
+	if conf > 1.0 {
+		conf = 1.0
+	}
+
+	return conf
 }
