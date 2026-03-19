@@ -19,6 +19,9 @@ type SessionProtocol struct {
 	NextSeq        int
 	LastAck        int
 	AuthorityOwner string
+
+	Replay *ReplayGuard
+	Window *SeqWindow
 }
 
 func NewSessionProtocol(sessionID, initialPath string) *SessionProtocol {
@@ -30,11 +33,14 @@ func NewSessionProtocol(sessionID, initialPath string) *SessionProtocol {
 		NextSeq:        1,
 		LastAck:        0,
 		AuthorityOwner: initialPath,
+		Replay:         NewReplayGuard(64),
+		Window:         NewSeqWindow(),
 	}
 }
 
 func (sp *SessionProtocol) BuildInit() WirePacket {
 	return WirePacket{
+		Version:   ProtocolVersion,
 		Type:      PacketTypeSessionInit,
 		SessionID: sp.SessionID,
 		Epoch:     sp.Epoch,
@@ -44,6 +50,7 @@ func (sp *SessionProtocol) BuildInit() WirePacket {
 
 func (sp *SessionProtocol) BuildData(payload []byte) WirePacket {
 	p := WirePacket{
+		Version:   ProtocolVersion,
 		Type:      PacketTypeData,
 		SessionID: sp.SessionID,
 		Epoch:     sp.Epoch,
@@ -61,6 +68,7 @@ func (sp *SessionProtocol) BuildAck(seq int) WirePacket {
 	}
 
 	return WirePacket{
+		Version:   ProtocolVersion,
 		Type:      PacketTypeAck,
 		SessionID: sp.SessionID,
 		Epoch:     sp.Epoch,
@@ -73,6 +81,7 @@ func (sp *SessionProtocol) StartRecovery(candidatePath string) WirePacket {
 	sp.State = SessionStateRecovering
 
 	return WirePacket{
+		Version:   ProtocolVersion,
 		Type:      PacketTypeAuthorityTransfer,
 		SessionID: sp.SessionID,
 		Epoch:     sp.Epoch + 1,
@@ -93,6 +102,10 @@ func (sp *SessionProtocol) ApplyAuthorityTransfer(candidatePath string, newEpoch
 }
 
 func (sp *SessionProtocol) ValidatePacket(pkt WirePacket) error {
+	if pkt.Version != ProtocolVersion {
+		return fmt.Errorf("unsupported protocol version")
+	}
+
 	if pkt.SessionID != sp.SessionID {
 		return fmt.Errorf("session mismatch")
 	}
@@ -103,6 +116,21 @@ func (sp *SessionProtocol) ValidatePacket(pkt WirePacket) error {
 
 	if pkt.Path != "" && pkt.Path != sp.ActivePath {
 		return fmt.Errorf("inactive path")
+	}
+
+	switch pkt.Type {
+	case PacketTypeData:
+		if err := sp.Window.Validate(pkt.Seq); err != nil {
+			return err
+		}
+		if err := sp.Replay.Validate(pkt.Seq); err != nil {
+			return err
+		}
+		sp.Window.Advance(pkt.Seq)
+	case PacketTypeAck:
+		if pkt.Ack <= 0 {
+			return fmt.Errorf("invalid ack")
+		}
 	}
 
 	return nil
