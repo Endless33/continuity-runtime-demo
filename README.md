@@ -5,184 +5,179 @@
 
 ---
 
-## Why this exists
+## What this is
 
-Most networking systems treat failure like this:
+An experimental Go prototype exploring **session continuity under transport volatility**.
 
-- path breaks  
-- connection dies  
-- reconnect  
-- session rebuilt  
+Instead of binding identity to a connection, this project models:
 
-This leads to:
-
-- packet loss  
-- broken ordering  
-- state reset  
-- visible interruption  
-
----
-
-## A different model
-
-Instead of:
-
-failure → reconnect → restore
-
-This demo models:
-
-failure → runtime transition → continuity preserved
+- session as the primary object
+- transport as replaceable
+- continuity as invariant
 
 ---
 
 ## Core idea
 
-Not connection-centric:
+Traditional systems:
 
-connection → identity
+- connection drops  
+- reconnect required  
+- session reset  
 
-But session-centric:
+This approach:
 
-session → continuity → changing transports
-
-Where:
-
-- session identity is stable  
-- transports are replaceable  
-- failure is expected  
-- continuity is enforced  
+- failure is a runtime event  
+- system evaluates alternatives  
+- authority is transferred (epoch-based)  
+- stale path is rejected  
+- session continues  
 
 ---
 
-## What this demo models
+## What is implemented
 
-This is not just a print demo.
+### Runtime
+- state machine (ATTACHED → RECOVERING)
+- decision engine (score / confidence)
+- migration trigger
+- authority handoff (epoch model)
+- stale transport rejection
 
-### Transport behavior
+### Protocol
+- wire packet format
+- versioning
+- replay protection
+- sequence window validation
+- session init / init ack
+- authority transfer
+- keepalive
+- close
 
-- multiple transports (WiFi / 5G / LTE)  
-- latency + jitter simulation  
-- packet loss  
+### Reliability
+- ACK flow
+- retransmission policy
+- timeout policy
 
-### Runtime decisions
-
-- scoring-based path selection  
-- adaptive multipath (enabled only under degradation)  
-- latency racing (fastest path wins)  
-
-### Stream continuity
-
-- packet duplication during migration  
-- deduplication  
-- reorder buffer  
-- partial ordering  
-
-### Reliability layer
-
-- session-level ACK tracking  
-- retransmission queue  
-- frame assembly  
-- forward error correction (FEC simulation)  
-
-### Session model
-
-- explicit session identity  
-- epoch-based authority  
-- stale transport rejection  
+### Simulation
+- multiple transports (wifi / 5g / lte)
+- latency + jitter
+- packet loss
+- packet duplication
+- lossy exchange
+- two-node interaction
 
 ### Observability
-
-- structured trace (JSON events)  
-- timeline reconstruction  
-- replay system  
-- invariant checks (e.g. epoch monotonicity)  
+- structured trace
+- timeline replay
+- invariant checks
 
 ---
 
-## Example flow
+## Demos
 
-WiFi fails  
-↓  
-runtime detects degradation  
-↓  
-adaptive overlap starts (WiFi + 5G)  
-↓  
-latency racing selects fastest path  
-↓  
-authority transferred (epoch++)  
-↓  
-stale path rejected  
-↓  
-packet loss partially recovered (FEC / retransmit)  
-↓  
-stream continues  
+### Handshake
+```
+go run ./cmd/handshake_demo/main.go
+```
+
+Shows:
+- session init
+- init ack
+- keepalive
+- close
+
+---
+
+### Migration
+```
+go run ./cmd/migration_demo/main.go
+```
+
+Shows:
+- data before failure
+- WiFi failure event
+- migration decision
+- authority transfer
+- data continues (no reset)
+
+---
+
+### Two-node
+```
+go run ./cmd/two_node_demo/main.go
+```
+
+Shows:
+- two nodes exchanging packets
+- ACK flow
+- lossy network behavior
+- migration + invariants
 
 ---
 
 ## Example output
 
-[EVENT] WiFi failed  
-[DECISION] migrate=true (margin=87.8, confidence=1.00)  
-[STATE] ATTACHED → RECOVERING  
-[MULTIPATH] starting overlap  
-[RACE] winner=5g  
-[AUTHORITY] epoch 2 granted  
-[CHECK] stale wifi rejected  
-[FEC] recovered missing packet  
-[FRAME] frame assembled  
-[STATE] RECOVERING → ATTACHED  
-[RESULT] session continues  
+```
+[EVENT] WiFi failed
+[DECISION] migrate=true (margin=87.8, confidence=1.00)
+[AUTHORITY] epoch 2 granted to 5G
+[CHECK] stale WiFi rejected
+[RESULT] session continues
+```
 
 ---
 
-## What this is NOT
+## Why this matters
 
-This is not:
+This is not about building "another VPN".
 
-- a VPN implementation  
-- a retry mechanism  
-- a reconnect strategy  
+The question is:
 
----
+**Can session continuity be preserved under failure without reconnect?**
 
-## What this could become
+If yes → this leads to:
 
-If extended beyond simulation:
-
-- zero-loss handoff between networks  
-- seamless WiFi ↔ 5G switching  
-- transport-independent sessions  
-- runtime-level continuity guarantees  
-- new class of session-centric protocols  
-
----
-
-## Research direction
-
-The question:
-
-Can session continuity be enforced as a system invariant even when transports fail?
-
-If yes:
-
-failure becomes just another runtime event  
-not a terminal condition  
+- zero-reset network handoff
+- transport-independent sessions
+- next-gen VPN / overlay models
+- runtime-driven networking
 
 ---
 
 ## Status
 
-Early prototype.  
-Focused on runtime behavior and continuity modeling.
+Early prototype.
+
+What it is:
+- protocol + runtime model
+- research-grade implementation
+- traceable + testable
+
+What it is not:
+- production VPN
+- production crypto
+- congestion-controlled stack
 
 ---
 
 ## Next steps
 
-- real transport integration (UDP / QUIC)  
-- congestion control  
-- real FEC  
-- protocol-level design  
+- real UDP / QUIC transport
+- retransmission improvements
+- packet scheduling
+- formal protocol spec
+- diagrams
+
+---
+
+## Direction
+
+This repo is evolving:
+
+```
+demo → runtime → protocol → architecture
+```
 
 ---
 
@@ -190,10 +185,8 @@ Focused on runtime behavior and continuity modeling.
 
 Looking for:
 
-- critical feedback  
-- edge cases  
-- architectural concerns  
-
----
-
-This is an exploration, not a finished system.
+- protocol flaws
+- edge cases
+- invariant violations
+- migration race conditions
+- replay / stale-path issues
