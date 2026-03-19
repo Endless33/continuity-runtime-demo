@@ -7,9 +7,10 @@ import (
 )
 
 type Engine struct {
-	Runtime   *Runtime
-	Protocol  *protocol.SessionProtocol
-	Invariant *protocol.InvariantChecker
+	Runtime    *Runtime
+	Protocol   *protocol.SessionProtocol
+	Invariant  *protocol.InvariantChecker
+	Authority  *protocol.AuthorityRules
 }
 
 func NewEngine() *Engine {
@@ -19,6 +20,7 @@ func NewEngine() *Engine {
 		Runtime:   rt,
 		Protocol:  protocol.NewSessionProtocol("sess-001", rt.Current.Name),
 		Invariant: protocol.NewInvariantChecker(),
+		Authority: protocol.NewAuthorityRules(),
 	}
 }
 
@@ -54,7 +56,27 @@ func (e *Engine) SendData(payload []byte) {
 	)
 }
 
-func (e *Engine) StartMigration(candidatePath string) {
+func (e *Engine) StartMigration(candidatePath string) error {
+	targetEpoch := e.Protocol.Epoch + 1
+
+	auth := e.Authority.CanStartTransfer(e.Protocol, candidatePath, targetEpoch)
+
+	e.Runtime.Trace.Record("protocol_authority_start_check", "start transfer evaluated", map[string]interface{}{
+		"candidate_path": candidatePath,
+		"target_epoch":   targetEpoch,
+		"allowed":        auth.Allowed,
+		"decision":       auth.Decision,
+		"reason":         auth.Reason,
+	})
+
+	if !auth.Allowed {
+		fmt.Printf("[PROTOCOL] migration request rejected decision=%s reason=%s\n",
+			auth.Decision,
+			auth.Reason,
+		)
+		return fmt.Errorf(auth.Reason)
+	}
+
 	req := e.Protocol.StartRecovery(candidatePath)
 
 	e.Runtime.Trace.Record("protocol_migration_requested", "authority transfer requested", map[string]interface{}{
@@ -66,11 +88,31 @@ func (e *Engine) StartMigration(candidatePath string) {
 		req.Path,
 		req.Epoch,
 	)
+
+	return nil
 }
 
 func (e *Engine) CommitMigration(candidatePath string) error {
 	oldEpoch := e.Protocol.Epoch
 	newEpoch := e.Protocol.Epoch + 1
+
+	auth := e.Authority.CanCommitTransfer(e.Protocol, candidatePath, newEpoch)
+
+	e.Runtime.Trace.Record("protocol_authority_commit_check", "commit transfer evaluated", map[string]interface{}{
+		"path":     candidatePath,
+		"epoch":    newEpoch,
+		"allowed":  auth.Allowed,
+		"decision": auth.Decision,
+		"reason":   auth.Reason,
+	})
+
+	if !auth.Allowed {
+		fmt.Printf("[PROTOCOL] migration commit rejected decision=%s reason=%s\n",
+			auth.Decision,
+			auth.Reason,
+		)
+		return fmt.Errorf(auth.Reason)
+	}
 
 	if err := e.Protocol.ApplyAuthorityTransfer(candidatePath, newEpoch); err != nil {
 		return err
@@ -86,7 +128,6 @@ func (e *Engine) CommitMigration(candidatePath string) error {
 		e.Protocol.Epoch,
 	)
 
-	// protocol-level invariant: epoch must increase
 	epochCheck := e.Invariant.CheckEpochMonotonic(oldEpoch, e.Protocol.Epoch)
 	e.printInvariant(epochCheck)
 	e.recordInvariant(epochCheck)
@@ -95,8 +136,31 @@ func (e *Engine) CommitMigration(candidatePath string) error {
 }
 
 func (e *Engine) Receive(pkt protocol.WirePacket) error {
+	auth := e.Authority.ValidateIncomingPath(e.Protocol, pkt)
+
+	e.Runtime.Trace.Record("protocol_authority_receive_check", "incoming path evaluated", map[string]interface{}{
+		"type":     pkt.Type,
+		"seq":      pkt.Seq,
+		"epoch":    pkt.Epoch,
+		"path":     pkt.Path,
+		"allowed":  auth.Allowed,
+		"decision": auth.Decision,
+		"reason":   auth.Reason,
+	})
+
+	if !auth.Allowed {
+		e.Runtime.Trace.Record("protocol_rejected", "packet rejected by authority rules", map[string]interface{}{
+			"reason":   auth.Reason,
+			"decision": auth.Decision,
+			"seq":      pkt.Seq,
+			"epoch":    pkt.Epoch,
+			"path":     pkt.Path,
+		})
+		return fmt.Errorf(auth.Reason)
+	}
+
 	if err := e.Protocol.ValidatePacket(pkt); err != nil {
-		e.Runtime.Trace.Record("protocol_rejected", "packet rejected", map[string]interface{}{
+		e.Runtime.Trace.Record("protocol_rejected", "packet rejected by protocol validation", map[string]interface{}{
 			"reason": err.Error(),
 			"seq":    pkt.Seq,
 			"epoch":  pkt.Epoch,
@@ -119,7 +183,6 @@ func (e *Engine) Receive(pkt protocol.WirePacket) error {
 		pkt.Path,
 	)
 
-	// packet-level invariant
 	packetCheck := e.Invariant.CheckPacket(pkt, e.Protocol)
 	e.printInvariant(packetCheck)
 	e.recordInvariant(packetCheck)
