@@ -8,16 +8,19 @@ import (
 )
 
 func main() {
-	fmt.Println("MIGRATION DEMO (LOSSY EXCHANGE)")
+	fmt.Println("MIGRATION DEMO (LOSSY EXCHANGE + ACK EXCHANGE)")
 	fmt.Println()
 
 	client := runtime.NewNode("client")
 	server := runtime.NewNode("server")
-	ex := runtime.NewLossyExchange("migration")
+
+	forward := runtime.NewLossyExchange("client->server")
+	reverse := runtime.NewLossyExchange("server->client")
+	acks := runtime.NewAckExchange(forward, reverse)
 
 	// Handshake
 	initPkt := client.StartHandshake()
-	resp, err := ex.Send(client, server, initPkt)
+	resp, err := forward.Send(client, server, initPkt)
 	if err != nil {
 		fmt.Printf("[ERROR] server failed to handle init: %v\n", err)
 		return
@@ -26,7 +29,7 @@ func main() {
 		fmt.Println("[WARN] init dropped or missing init ack")
 		return
 	}
-	if _, err := ex.Send(server, client, *resp); err != nil {
+	if _, err := reverse.Send(server, client, *resp); err != nil {
 		fmt.Printf("[ERROR] client failed to handle init ack: %v\n", err)
 		return
 	}
@@ -38,18 +41,11 @@ func main() {
 	data1 := client.Engine.Protocol.BuildData([]byte("wire-pre-1"))
 	data2 := client.Engine.Protocol.BuildData([]byte("wire-pre-2"))
 
-	if _, err := ex.Send(client, server, data1); err != nil {
-		fmt.Printf("[ERROR] failed to deliver data1: %v\n", err)
+	if err := acks.SendData(client, server, data1); err != nil {
+		fmt.Printf("[ERROR] failed to exchange data1: %v\n", err)
 	}
-	if err := ex.SendAck(server, client, data1.Seq); err != nil {
-		fmt.Printf("[ERROR] failed to deliver ack1: %v\n", err)
-	}
-
-	if _, err := ex.Send(client, server, data2); err != nil {
-		fmt.Printf("[ERROR] failed to deliver data2: %v\n", err)
-	}
-	if err := ex.SendAck(server, client, data2.Seq); err != nil {
-		fmt.Printf("[ERROR] failed to deliver ack2: %v\n", err)
+	if err := acks.SendData(client, server, data2); err != nil {
+		fmt.Printf("[ERROR] failed to exchange data2: %v\n", err)
 	}
 
 	fmt.Println("\n=== FAILURE + RECOVERY START ===")
@@ -79,7 +75,7 @@ func main() {
 		Path:      targetPath,
 	}
 
-	if _, err := ex.Send(client, server, req); err != nil {
+	if _, err := forward.Send(client, server, req); err != nil {
 		fmt.Printf("[ERROR] server rejected transfer request: %v\n", err)
 	}
 
@@ -115,18 +111,11 @@ func main() {
 	post1 := client.Engine.Protocol.BuildData([]byte("post-migration-1"))
 	post2 := client.Engine.Protocol.BuildData([]byte("post-migration-2"))
 
-	if _, err := ex.Send(client, server, post1); err != nil {
-		fmt.Printf("[ERROR] failed to deliver post1: %v\n", err)
+	if err := acks.SendData(client, server, post1); err != nil {
+		fmt.Printf("[ERROR] failed to exchange post1: %v\n", err)
 	}
-	if err := ex.SendAck(server, client, post1.Seq); err != nil {
-		fmt.Printf("[ERROR] failed to deliver post-ack1: %v\n", err)
-	}
-
-	if _, err := ex.Send(client, server, post2); err != nil {
-		fmt.Printf("[ERROR] failed to deliver post2: %v\n", err)
-	}
-	if err := ex.SendAck(server, client, post2.Seq); err != nil {
-		fmt.Printf("[ERROR] failed to deliver post-ack2: %v\n", err)
+	if err := acks.SendData(client, server, post2); err != nil {
+		fmt.Printf("[ERROR] failed to exchange post2: %v\n", err)
 	}
 
 	fmt.Println("\n=== RESULT ===")
