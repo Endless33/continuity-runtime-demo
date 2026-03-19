@@ -1,7 +1,5 @@
 package protocol
 
-import "fmt"
-
 type SessionState string
 
 const (
@@ -90,8 +88,12 @@ func (sp *SessionProtocol) StartRecovery(candidatePath string) WirePacket {
 }
 
 func (sp *SessionProtocol) ApplyAuthorityTransfer(candidatePath string, newEpoch int) error {
+	if sp.State == SessionStateClosed {
+		return NewProtocolError(ErrProtocolClosed, "cannot migrate closed session")
+	}
+
 	if newEpoch <= sp.Epoch {
-		return fmt.Errorf("stale epoch: got %d current %d", newEpoch, sp.Epoch)
+		return NewProtocolError(ErrStaleEpoch, "authority transfer epoch is not newer")
 	}
 
 	sp.Epoch = newEpoch
@@ -102,35 +104,47 @@ func (sp *SessionProtocol) ApplyAuthorityTransfer(candidatePath string, newEpoch
 }
 
 func (sp *SessionProtocol) ValidatePacket(pkt WirePacket) error {
+	if sp.State == SessionStateClosed && pkt.Type != PacketTypeClose {
+		return NewProtocolError(ErrProtocolClosed, "session is closed")
+	}
+
 	if pkt.Version != ProtocolVersion {
-		return fmt.Errorf("unsupported protocol version")
+		return NewProtocolError(ErrUnsupportedVersion, "unsupported protocol version")
 	}
 
 	if pkt.SessionID != sp.SessionID {
-		return fmt.Errorf("session mismatch")
+		return NewProtocolError(ErrSessionMismatch, "session mismatch")
 	}
 
 	if pkt.Epoch != sp.Epoch {
-		return fmt.Errorf("stale epoch")
+		return NewProtocolError(ErrStaleEpoch, "stale epoch")
 	}
 
 	if pkt.Path != "" && pkt.Path != sp.ActivePath {
-		return fmt.Errorf("inactive path")
+		return NewProtocolError(ErrInactivePath, "inactive path")
 	}
 
 	switch pkt.Type {
 	case PacketTypeData:
 		if err := sp.Window.Validate(pkt.Seq); err != nil {
-			return err
+			return NewProtocolError(ErrInvalidSequence, err.Error())
 		}
 		if err := sp.Replay.Validate(pkt.Seq); err != nil {
-			return err
+			return NewProtocolError(ErrReplayDetected, err.Error())
 		}
 		sp.Window.Advance(pkt.Seq)
+
 	case PacketTypeAck:
 		if pkt.Ack <= 0 {
-			return fmt.Errorf("invalid ack")
+			return NewProtocolError(ErrAckInvalid, "invalid ack")
 		}
+
+	case PacketTypeKeepalive:
+		return nil
+
+	case PacketTypeClose:
+		sp.State = SessionStateClosed
+		return nil
 	}
 
 	return nil
