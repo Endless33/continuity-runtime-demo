@@ -14,6 +14,11 @@ type Stream struct {
 	ACK      *ACKTracker
 	RTX      *RetransmitQueue
 	Order    *OrderingPolicy
+
+	Frames *FrameAssembler
+	FECEnc *FECEncoder
+	FECDec *FECDecoder
+	Recent []Packet
 }
 
 func NewStream(r *Runtime, n *NetworkSimulator) *Stream {
@@ -27,6 +32,11 @@ func NewStream(r *Runtime, n *NetworkSimulator) *Stream {
 		ACK:      NewACKTracker(),
 		RTX:      NewRetransmitQueue(),
 		Order:    NewOrderingPolicy(),
+
+		Frames: NewFrameAssembler(3),
+		FECEnc: NewFECEncoder(3),
+		FECDec: NewFECDecoder(),
+		Recent: []Packet{},
 	}
 }
 
@@ -49,14 +59,14 @@ func (s *Stream) Send(n int) {
 				s.Multi.Secondary,
 			)
 			if !ok {
-				s.RTX.Add(Packet{ID: packetID, Transport: s.Runtime.Current.Name})
+				s.handleLoss(packetID, s.Runtime.Current.Name)
 				continue
 			}
 			s.process(packetID, winner)
 		} else {
 			ok := s.Network.Transmit(packetID, s.Runtime.Current)
 			if !ok {
-				s.RTX.Add(Packet{ID: packetID, Transport: s.Runtime.Current.Name})
+				s.handleLoss(packetID, s.Runtime.Current.Name)
 				continue
 			}
 			s.process(packetID, s.Runtime.Current)
@@ -64,6 +74,47 @@ func (s *Stream) Send(n int) {
 	}
 
 	s.retryPending()
+
+	// в конце можно флашить неполный frame
+	if frame := s.Frames.FlushPartial(); frame != nil {
+		fmt.Printf("[FRAME] emitted partial frame #%d (complete=%v)\n", frame.FrameID, frame.Complete)
+	}
+}
+
+func (s *Stream) handleLoss(packetID int, transport string) {
+	p := Packet{
+		ID:        packetID,
+		Transport: transport,
+	}
+
+	s.RTX.Add(p)
+
+	// Попытка FEC recovery, если хватает контекста
+	if len(s.Recent) >= 3 {
+		block := s.FECEnc.Build(s.Recent[:3])
+		if block != nil {
+			received := []int{}
+			missingID := packetID
+
+			for _, id := range block.DataPackets {
+				if id != missingID {
+					received = append(received, id)
+				}
+			}
+
+			if recovered, ok := s.FECDec.Recover(*block, received); ok {
+				fmt.Printf("[FEC] packet #%d recovered logically\n", recovered)
+
+				s.process(recovered, Transport{
+					Name:    transport + "+fec",
+					Latency: 0,
+					Score:   s.Runtime.Current.Score,
+				})
+
+				s.RTX.Remove(packetID)
+			}
+		}
+	}
 }
 
 func (s *Stream) retryPending() {
@@ -83,8 +134,13 @@ func (s *Stream) retryPending() {
 			ID:        p.ID,
 			Transport: p.Transport,
 		})
+
 		s.ACK.Ack(p.ID)
 		s.RTX.Remove(p.ID)
+		s.captureForFrame(Packet{
+			ID:        p.ID,
+			Transport: p.Transport,
+		})
 		s.Buffer.DebugState()
 	})
 }
@@ -101,11 +157,32 @@ func (s *Stream) process(packetID int, t Transport) {
 		return
 	}
 
-	s.Buffer.Push(Packet{
+	p := Packet{
 		ID:        packetID,
 		Transport: t.Name,
-	})
+	}
 
+	s.Buffer.Push(p)
 	s.ACK.Ack(packetID)
+	s.captureForFrame(p)
 	s.Buffer.DebugState()
+}
+
+func (s *Stream) captureForFrame(p Packet) {
+	s.Recent = append(s.Recent, p)
+	if len(s.Recent) > 6 {
+		s.Recent = s.Recent[len(s.Recent)-6:]
+	}
+
+	if frame := s.Frames.Push(p); frame != nil {
+		fmt.Printf("[FRAME] ready frame #%d complete=%v recovered=%v\n",
+			frame.FrameID,
+			frame.Complete,
+			frame.Recovered,
+		)
+	}
+
+	if len(s.Recent) >= 3 {
+		_ = s.FECEnc.Build(s.Recent[len(s.Recent)-3:])
+	}
 }
