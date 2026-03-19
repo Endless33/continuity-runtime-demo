@@ -17,6 +17,12 @@ Instead of binding identity to a connection, this project models:
 
 ---
 
+## Architecture
+
+![Continuity Runtime](docs/architecture.png)
+
+---
+
 ## Core idea
 
 Traditional systems:
@@ -128,6 +134,16 @@ Shows:
 
 ---
 
+## Key property
+
+```
+NO reconnect
+NO session reset
+CONTINUITY PRESERVED
+```
+
+---
+
 ## Why this matters
 
 This is not about building "another VPN".
@@ -142,6 +158,25 @@ If yes → this leads to:
 - transport-independent sessions
 - next-gen VPN / overlay models
 - runtime-driven networking
+
+---
+
+## What makes this different
+
+Most systems:
+- recover after failure
+
+This model:
+- avoids breaking the session in the first place
+
+It is closer to:
+- session migration
+- authority transfer
+- runtime-controlled networking
+
+Not:
+- retry logic
+- reconnect loops
 
 ---
 
@@ -167,7 +202,7 @@ What it is not:
 - retransmission improvements
 - packet scheduling
 - formal protocol spec
-- diagrams
+- protocol diagrams (flow, packet-level)
 
 ---
 
