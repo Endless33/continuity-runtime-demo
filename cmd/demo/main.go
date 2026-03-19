@@ -7,28 +7,30 @@ import (
 )
 
 func main() {
-	fmt.Println("CONTINUITY RUNTIME DEMO (MULTIPATH + ZERO-LOSS)")
+	fmt.Println("CONTINUITY RUNTIME DEMO (SESSION + TRACE + MULTIPATH)")
 	fmt.Println()
 
 	r := runtime.NewRuntime()
 	net := runtime.NewNetworkSimulator()
 	stream := runtime.NewStream(r, net)
 
-	// before failure
+	fmt.Println("=== BEFORE FAILURE ===")
 	stream.Send(5)
 
-	// начинаем overlap ДО падения (важно!)
+	// adaptive / overlap (можешь оставить или убрать — теперь это controlled runtime)
 	stream.Multi.StartOverlap()
 
-	// simulate failure
+	fmt.Println("\n=== FAILURE EVENT ===")
 	r.HandleEvent(runtime.EventWiFiFailed)
 
-	// во время overlap продолжаем стрим
+	fmt.Println("\n=== DURING MIGRATION ===")
 	stream.Send(5)
 
-	// отключаем overlap
 	stream.Multi.StopOverlap()
 
-	// продолжаем уже на новом пути
+	fmt.Println("\n=== AFTER MIGRATION ===")
 	stream.Send(5)
+
+	// 🔥 ВАЖНО: вывод timeline
+	r.Trace.PrintTimeline()
 }
