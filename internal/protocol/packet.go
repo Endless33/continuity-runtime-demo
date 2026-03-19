@@ -12,6 +12,7 @@ const (
 	PacketTypeAuthorityTransfer PacketType = "authority_transfer"
 	PacketTypeAuthorityAck      PacketType = "authority_ack"
 	PacketTypeKeepalive         PacketType = "keepalive"
+	PacketTypeClose             PacketType = "close"
 )
 
 type WirePacket struct {
