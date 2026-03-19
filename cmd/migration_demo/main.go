@@ -13,19 +13,20 @@ func main() {
 
 	client := runtime.NewNode("client")
 	server := runtime.NewNode("server")
+	ex := runtime.NewExchange("migration")
 
 	// Handshake first
 	initPkt := client.StartHandshake()
-	ackPkt, err := server.Receive(initPkt)
+	resp, err := ex.Send(client, server, initPkt)
 	if err != nil {
 		fmt.Printf("[ERROR] server failed to handle init: %v\n", err)
 		return
 	}
-	if ackPkt == nil {
+	if resp == nil {
 		fmt.Println("[ERROR] missing init ack")
 		return
 	}
-	if _, err := client.Receive(*ackPkt); err != nil {
+	if _, err := ex.Send(server, client, *resp); err != nil {
 		fmt.Printf("[ERROR] client failed to handle init ack: %v\n", err)
 		return
 	}
@@ -33,6 +34,23 @@ func main() {
 	fmt.Println("\n=== DATA BEFORE FAILURE ===")
 	client.Engine.SendData([]byte("pre-failure-1"))
 	client.Engine.SendData([]byte("pre-failure-2"))
+
+	data1 := client.Engine.Protocol.BuildData([]byte("wire-pre-1"))
+	data2 := client.Engine.Protocol.BuildData([]byte("wire-pre-2"))
+
+	if _, err := ex.Send(client, server, data1); err != nil {
+		fmt.Printf("[ERROR] failed to deliver data1: %v\n", err)
+	}
+	if err := ex.SendAck(server, client, data1.Seq); err != nil {
+		fmt.Printf("[ERROR] failed to deliver ack1: %v\n", err)
+	}
+
+	if _, err := ex.Send(client, server, data2); err != nil {
+		fmt.Printf("[ERROR] failed to deliver data2: %v\n", err)
+	}
+	if err := ex.SendAck(server, client, data2.Seq); err != nil {
+		fmt.Printf("[ERROR] failed to deliver ack2: %v\n", err)
+	}
 
 	fmt.Println("\n=== FAILURE + RECOVERY START ===")
 	client.Engine.Runtime.HandleEvent(runtime.EventWiFiFailed)
@@ -61,7 +79,7 @@ func main() {
 		Path:      targetPath,
 	}
 
-	if _, err := server.Receive(req); err != nil {
+	if _, err := ex.Send(client, server, req); err != nil {
 		fmt.Printf("[ERROR] server rejected transfer request: %v\n", err)
 	}
 
@@ -94,8 +112,22 @@ func main() {
 	server.Engine.CheckProtocolInvariants()
 
 	fmt.Println("\n=== DATA AFTER MIGRATION ===")
-	client.Engine.SendData([]byte("post-migration-1"))
-	client.Engine.SendData([]byte("post-migration-2"))
+	post1 := client.Engine.Protocol.BuildData([]byte("post-migration-1"))
+	post2 := client.Engine.Protocol.BuildData([]byte("post-migration-2"))
+
+	if _, err := ex.Send(client, server, post1); err != nil {
+		fmt.Printf("[ERROR] failed to deliver post1: %v\n", err)
+	}
+	if err := ex.SendAck(server, client, post1.Seq); err != nil {
+		fmt.Printf("[ERROR] failed to deliver post-ack1: %v\n", err)
+	}
+
+	if _, err := ex.Send(client, server, post2); err != nil {
+		fmt.Printf("[ERROR] failed to deliver post2: %v\n", err)
+	}
+	if err := ex.SendAck(server, client, post2.Seq); err != nil {
+		fmt.Printf("[ERROR] failed to deliver post-ack2: %v\n", err)
+	}
 
 	fmt.Println("\n=== RESULT ===")
 	fmt.Printf("[CLIENT] state=%s epoch=%d path=%s\n",
