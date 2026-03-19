@@ -2,25 +2,30 @@ package runtime
 
 import (
 	"fmt"
+	"time"
 
 	"continuity-runtime-demo/internal/protocol"
 )
 
 type Engine struct {
-	Runtime    *Runtime
-	Protocol   *protocol.SessionProtocol
-	Invariant  *protocol.InvariantChecker
-	Authority  *protocol.AuthorityRules
+	Runtime      *Runtime
+	Protocol     *protocol.SessionProtocol
+	Invariant    *protocol.InvariantChecker
+	Authority    *protocol.AuthorityRules
+	Timeouts     *protocol.TimeoutPolicy
+	Retransmit   *protocol.RetransmissionPolicy
 }
 
 func NewEngine() *Engine {
 	rt := NewRuntime()
 
 	return &Engine{
-		Runtime:   rt,
-		Protocol:  protocol.NewSessionProtocol("sess-001", rt.Current.Name),
-		Invariant: protocol.NewInvariantChecker(),
-		Authority: protocol.NewAuthorityRules(),
+		Runtime:    rt,
+		Protocol:   protocol.NewSessionProtocol("sess-001", rt.Current.Name),
+		Invariant:  protocol.NewInvariantChecker(),
+		Authority:  protocol.NewAuthorityRules(),
+		Timeouts:   protocol.NewTimeoutPolicy(),
+		Retransmit: protocol.NewRetransmissionPolicy(),
 	}
 }
 
@@ -31,29 +36,39 @@ func (e *Engine) Init() {
 		"session_id": pkt.SessionID,
 		"epoch":      pkt.Epoch,
 		"path":       pkt.Path,
+		"version":    pkt.Version,
+		"timeout_ms": e.Timeouts.InitTimeout.Milliseconds(),
 	})
 
-	fmt.Printf("[PROTOCOL] init session=%s epoch=%d path=%s\n",
+	fmt.Printf("[PROTOCOL] init session=%s epoch=%d path=%s version=%d\n",
 		pkt.SessionID,
 		pkt.Epoch,
 		pkt.Path,
+		pkt.Version,
 	)
 }
 
-func (e *Engine) SendData(payload []byte) {
+func (e *Engine) SendData(payload []byte) protocol.WirePacket {
 	pkt := e.Protocol.BuildData(payload)
 
 	e.Runtime.Trace.Record("protocol_data", "data packet built", map[string]interface{}{
-		"seq":   pkt.Seq,
-		"epoch": pkt.Epoch,
-		"path":  pkt.Path,
+		"seq":             pkt.Seq,
+		"epoch":           pkt.Epoch,
+		"path":            pkt.Path,
+		"version":         pkt.Version,
+		"payload_size":    len(pkt.Payload),
+		"ack_timeout_ms":  e.Timeouts.AckTimeout.Milliseconds(),
+		"max_retries":     e.Retransmit.MaxRetries,
 	})
 
-	fmt.Printf("[PROTOCOL] data seq=%d epoch=%d path=%s\n",
+	fmt.Printf("[PROTOCOL] data seq=%d epoch=%d path=%s version=%d\n",
 		pkt.Seq,
 		pkt.Epoch,
 		pkt.Path,
+		pkt.Version,
 	)
+
+	return pkt
 }
 
 func (e *Engine) StartMigration(candidatePath string) error {
@@ -62,11 +77,12 @@ func (e *Engine) StartMigration(candidatePath string) error {
 	auth := e.Authority.CanStartTransfer(e.Protocol, candidatePath, targetEpoch)
 
 	e.Runtime.Trace.Record("protocol_authority_start_check", "start transfer evaluated", map[string]interface{}{
-		"candidate_path": candidatePath,
-		"target_epoch":   targetEpoch,
-		"allowed":        auth.Allowed,
-		"decision":       auth.Decision,
-		"reason":         auth.Reason,
+		"candidate_path":        candidatePath,
+		"target_epoch":          targetEpoch,
+		"allowed":               auth.Allowed,
+		"decision":              auth.Decision,
+		"reason":                auth.Reason,
+		"migration_timeout_ms":  e.Timeouts.MigrationTimeout.Milliseconds(),
 	})
 
 	if !auth.Allowed {
@@ -82,6 +98,7 @@ func (e *Engine) StartMigration(candidatePath string) error {
 	e.Runtime.Trace.Record("protocol_migration_requested", "authority transfer requested", map[string]interface{}{
 		"target_path":  req.Path,
 		"target_epoch": req.Epoch,
+		"version":      req.Version,
 	})
 
 	fmt.Printf("[PROTOCOL] migration requested path=%s target_epoch=%d\n",
@@ -141,8 +158,10 @@ func (e *Engine) Receive(pkt protocol.WirePacket) error {
 	e.Runtime.Trace.Record("protocol_authority_receive_check", "incoming path evaluated", map[string]interface{}{
 		"type":     pkt.Type,
 		"seq":      pkt.Seq,
+		"ack":      pkt.Ack,
 		"epoch":    pkt.Epoch,
 		"path":     pkt.Path,
+		"version":  pkt.Version,
 		"allowed":  auth.Allowed,
 		"decision": auth.Decision,
 		"reason":   auth.Reason,
@@ -152,35 +171,45 @@ func (e *Engine) Receive(pkt protocol.WirePacket) error {
 		e.Runtime.Trace.Record("protocol_rejected", "packet rejected by authority rules", map[string]interface{}{
 			"reason":   auth.Reason,
 			"decision": auth.Decision,
+			"type":     pkt.Type,
 			"seq":      pkt.Seq,
+			"ack":      pkt.Ack,
 			"epoch":    pkt.Epoch,
 			"path":     pkt.Path,
+			"version":  pkt.Version,
 		})
 		return fmt.Errorf(auth.Reason)
 	}
 
 	if err := e.Protocol.ValidatePacket(pkt); err != nil {
 		e.Runtime.Trace.Record("protocol_rejected", "packet rejected by protocol validation", map[string]interface{}{
-			"reason": err.Error(),
-			"seq":    pkt.Seq,
-			"epoch":  pkt.Epoch,
-			"path":   pkt.Path,
+			"reason":  err.Error(),
+			"type":    pkt.Type,
+			"seq":     pkt.Seq,
+			"ack":     pkt.Ack,
+			"epoch":   pkt.Epoch,
+			"path":    pkt.Path,
+			"version": pkt.Version,
 		})
 		return err
 	}
 
 	e.Runtime.Trace.Record("protocol_accepted", "packet accepted", map[string]interface{}{
-		"type":  pkt.Type,
-		"seq":   pkt.Seq,
-		"epoch": pkt.Epoch,
-		"path":  pkt.Path,
+		"type":    pkt.Type,
+		"seq":     pkt.Seq,
+		"ack":     pkt.Ack,
+		"epoch":   pkt.Epoch,
+		"path":    pkt.Path,
+		"version": pkt.Version,
 	})
 
-	fmt.Printf("[PROTOCOL] accepted type=%s seq=%d epoch=%d path=%s\n",
+	fmt.Printf("[PROTOCOL] accepted type=%s seq=%d ack=%d epoch=%d path=%s version=%d\n",
 		pkt.Type,
 		pkt.Seq,
+		pkt.Ack,
 		pkt.Epoch,
 		pkt.Path,
+		pkt.Version,
 	)
 
 	packetCheck := e.Invariant.CheckPacket(pkt, e.Protocol)
@@ -198,6 +227,35 @@ func (e *Engine) CheckProtocolInvariants() {
 		e.printInvariant(res)
 		e.recordInvariant(res)
 	}
+}
+
+func (e *Engine) SimulateAckWait(seq int) {
+	timeout := e.Timeouts.AckTimeout
+
+	e.Runtime.Trace.Record("protocol_ack_wait", "waiting for ack", map[string]interface{}{
+		"seq":        seq,
+		"timeout_ms": timeout.Milliseconds(),
+	})
+
+	fmt.Printf("[PROTOCOL] waiting ack for seq=%d timeout=%v\n", seq, timeout)
+	time.Sleep(timeout / 10)
+}
+
+func (e *Engine) SimulateRetransmission(seq int, attempt int) {
+	backoff := e.Retransmit.BackoffFor(attempt)
+
+	e.Runtime.Trace.Record("protocol_retransmit", "retransmission scheduled", map[string]interface{}{
+		"seq":        seq,
+		"attempt":    attempt,
+		"backoff_ms": backoff.Milliseconds(),
+	})
+
+	fmt.Printf("[PROTOCOL] retransmit seq=%d attempt=%d backoff=%v\n",
+		seq,
+		attempt,
+		backoff,
+	)
+	time.Sleep(backoff / 10)
 }
 
 func (e *Engine) printInvariant(res protocol.InvariantResult) {
