@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	fmt.Println("CONTINUITY RUNTIME DEMO (SESSION + TRACE + MULTIPATH)")
+	fmt.Println("CONTINUITY RUNTIME DEMO (SESSION + TRACE + MULTIPATH + REPLAY)")
 	fmt.Println()
 
 	r := runtime.NewRuntime()
@@ -17,7 +17,6 @@ func main() {
 	fmt.Println("=== BEFORE FAILURE ===")
 	stream.Send(5)
 
-	// adaptive / overlap (можешь оставить или убрать — теперь это controlled runtime)
 	stream.Multi.StartOverlap()
 
 	fmt.Println("\n=== FAILURE EVENT ===")
@@ -31,6 +30,11 @@ func main() {
 	fmt.Println("\n=== AFTER MIGRATION ===")
 	stream.Send(5)
 
-	// 🔥 ВАЖНО: вывод timeline
 	r.Trace.PrintTimeline()
+
+	replay := runtime.NewReplayEngine(r.Trace.Events)
+	replay.Run()
+
+	checker := runtime.NewInvariantChecker()
+	checker.Check(r.Trace.Events)
 }
