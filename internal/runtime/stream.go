@@ -2,24 +2,25 @@ package runtime
 
 import (
 	"fmt"
-	"math/rand"
 )
 
 type Stream struct {
-	Runtime *Runtime
-	Network *NetworkSimulator
-	Buffer  *ReorderBuffer
-	Dedup   *Dedup
-	Multi   *MultiPath
+	Runtime  *Runtime
+	Network  *NetworkSimulator
+	Buffer   *ReorderBuffer
+	Dedup    *Dedup
+	Multi    *MultiPath
+	Adaptive *AdaptiveController
 }
 
 func NewStream(r *Runtime, n *NetworkSimulator) *Stream {
 	return &Stream{
-		Runtime: r,
-		Network: n,
-		Buffer:  NewReorderBuffer(r.PacketID),
-		Dedup:   NewDedup(),
-		Multi:   NewMultiPath(r.Current, r.Candidates[0]),
+		Runtime:  r,
+		Network:  n,
+		Buffer:   NewReorderBuffer(r.PacketID),
+		Dedup:    NewDedup(),
+		Multi:    NewMultiPath(r.Current, r.Candidates[0]),
+		Adaptive: NewAdaptiveController(),
 	}
 }
 
@@ -28,46 +29,48 @@ func (s *Stream) Send(n int) {
 		s.Runtime.PacketID++
 		packetID := s.Runtime.PacketID
 
-		// если overlap активен — отправляем по двум путям
-		if s.Multi.Active {
-			s.sendVia(packetID, s.Multi.Primary)
-			s.sendVia(packetID, s.Multi.Secondary)
+		// adaptive overlap
+		if s.Adaptive.Evaluate(s.Runtime.Current) {
+			s.Multi.StartOverlap()
 		} else {
-			s.sendVia(packetID, s.Runtime.Current)
+			s.Multi.StopOverlap()
+		}
+
+		// latency racing если overlap активен
+		if s.Multi.Active {
+			winner, ok := RaceTransports(
+				s.Network,
+				packetID,
+				s.Multi.Primary,
+				s.Multi.Secondary,
+			)
+
+			if !ok {
+				continue
+			}
+
+			s.process(packetID, winner)
+		} else {
+			ok := s.Network.Transmit(packetID, s.Runtime.Current)
+			if !ok {
+				continue
+			}
+			s.process(packetID, s.Runtime.Current)
 		}
 	}
 }
 
-func (s *Stream) sendVia(packetID int, t Transport) {
-	delivered := s.Network.Transmit(packetID, t)
-
-	if !delivered {
-		return
-	}
-
-	// dedup (важно!)
+func (s *Stream) process(packetID int, t Transport) {
+	// dedup
 	if s.Dedup.Seen(packetID) {
-		fmt.Printf("[DEDUP] duplicate packet #%d dropped\n", packetID)
+		fmt.Printf("[DEDUP] duplicate #%d dropped\n", packetID)
 		return
 	}
 
-	// reorder simulation
-	if rand.Float64() < 0.3 {
-		delayedID := packetID + rand.Intn(3)
-
-		fmt.Printf("[REORDER] packet #%d delayed → arrives as #%d (%s)\n",
-			packetID, delayedID, t.Name)
-
-		s.Buffer.Push(Packet{
-			ID:        delayedID,
-			Transport: t.Name,
-		})
-	} else {
-		s.Buffer.Push(Packet{
-			ID:        packetID,
-			Transport: t.Name,
-		})
-	}
+	s.Buffer.Push(Packet{
+		ID:        packetID,
+		Transport: t.Name,
+	})
 
 	s.Buffer.DebugState()
 }
