@@ -1,38 +1,39 @@
 package session
 
-import (
-	"fmt"
-	"sync"
+import "fmt"
+
+type State string
+
+const (
+	StateInit        State = "INIT"
+	StateEstablished State = "ESTABLISHED"
 )
 
 type Session struct {
-	ID        string
-	Epoch     int
-	LastAddr  string
-	mu        sync.Mutex
+	ID       string
+	Epoch    int
+	State    State
+	LastAddr string
 }
 
 func NewSession(id string) *Session {
 	return &Session{
 		ID:    id,
 		Epoch: 1,
+		State: StateInit,
 	}
 }
 
 func (s *Session) UpdatePath(addr string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.LastAddr != addr {
-		fmt.Println("🔁 path change:", s.LastAddr, "→", addr)
-		s.LastAddr = addr
+	if s.LastAddr != "" && s.LastAddr != addr {
+		fmt.Println("path change:", s.LastAddr, "->", addr)
 	}
+	s.LastAddr = addr
 }
 
-func (s *Session) NextEpoch() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.Epoch++
-	fmt.Println("⬆ epoch:", s.Epoch)
+func (s *Session) Establish() {
+	if s.State != StateEstablished {
+		s.State = StateEstablished
+		fmt.Println("session established:", s.ID, "epoch:", s.Epoch)
+	}
 }
