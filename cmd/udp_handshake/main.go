@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 
-	"yourmodule/internal/session"
-	"yourmodule/internal/transport"
+	"continuity-runtime-demo/internal/session"
+	"continuity-runtime-demo/internal/transport"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("usage: go run main.go [listen_addr]")
+		fmt.Println("usage: go run cmd/udp_handshake/main.go :9000")
 		return
 	}
 
@@ -23,17 +24,23 @@ func main() {
 
 	sess := session.NewSession("session-1")
 
-	fmt.Println("listening on", listen)
+	fmt.Println("🚀 UDP node listening on", listen)
 
-	node.Receive(func(data []byte, fromAddr interface{}) {
-		addr := fromAddr.(*net.UDPAddr).String()
+	node.Receive(func(data []byte, from *net.UDPAddr) {
+		addr := from.String()
 
 		fmt.Println("📦 recv from", addr, ":", string(data))
 
-		// 🔥 ключевая логика
+		// 🔥 ключевая идея: session отслеживает path
 		sess.UpdatePath(addr)
 
-		// отправляем ответ
-		node.Send(addr, []byte("ack:"+sess.ID))
+		// имитация authority / epoch логики
+		fmt.Println("🧠 session:", sess.ID, "epoch:", sess.Epoch)
+
+		// отправка ответа
+		err := node.Send(addr, []byte("ack:"+sess.ID))
+		if err != nil {
+			fmt.Println("send error:", err)
+		}
 	})
 }
