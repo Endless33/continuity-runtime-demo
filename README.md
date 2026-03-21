@@ -23,6 +23,12 @@ Transport dies → runtime reacts → authority transfers → session continues.
 
 ---
 
+## Architecture
+
+![Continuity Runtime](docs/architecture.png)
+
+---
+
 Core claim
 
 Continuity should be enforced by the runtime,
