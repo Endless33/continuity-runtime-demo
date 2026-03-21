@@ -27,6 +27,74 @@ Transport dies → runtime reacts → authority transfers → session continues.
 
 ---
 
+## What am I building?
+
+A **continuity-first networking runtime** that treats the session as the primary object and the transport as a replaceable attachment.
+
+Instead of assuming that connection failure must destroy the session, this system explores whether identity can survive transport loss through explicit runtime control, authority transfer, and path migration.
+
+In practical terms:
+
+- session = stable identity
+- transport = replaceable carrier
+- failure = runtime event
+
+---
+
+## Why it matters
+
+Most systems still accept the same failure model:
+
+- connection drops
+- reconnect starts
+- state is rebuilt
+- execution resumes later
+
+That model creates avoidable discontinuity.
+
+This project explores a different possibility:
+
+**continuity can be enforced, not reconstructed.**
+
+If that holds, it changes how we think about:
+
+- mobile handoff
+- transport migration
+- multipath systems
+- resilient overlays
+- continuity in distributed runtimes
+
+---
+
+## What’s different?
+
+The difference is not “another VPN”.
+
+The difference is the invariant.
+
+Traditional systems usually bind identity to the active transport path.
+
+This runtime does not.
+
+It tries to enforce these properties instead:
+
+- session identity survives transport death
+- authority is explicit and epoch-based
+- stale paths are rejected
+- migration is controlled by runtime decisions
+- continuity is prioritized over short-term optimal routing
+
+That means the system is designed around:
+
+- decision engine behavior
+- hysteresis and anti-flapping logic
+- explainable migration
+- invariant-driven continuity
+
+Not just reconnect logic.
+
+---
+
 ## Architecture
 
 ![Continuity Runtime Architecture (Session ≠ Transport)](docs/Continuity%20Runtime%20Model.png)
