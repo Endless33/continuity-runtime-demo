@@ -15,6 +15,22 @@ Expected:
 
 ---
 
+## Mental model
+
+```
+session != connection
+
+session = identity
+transport = attachment
+failure = runtime event
+```
+
+This system does not "reconnect".
+
+It **rebinds the session to a new transport**.
+
+---
+
 # Continuity Runtime Demo
 
 > failure ≠ connection death  
