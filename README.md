@@ -1,10 +1,31 @@
-## Quick start (1 command)
+Continuity Runtime Demo
+
+«failure ≠ connection death
+failure = runtime event
+continuity is enforced, not recovered»
+
+---
+
+⚡ TL;DR
+
+session survives transport death
+no reconnect
+no reset
+
+---
+
+Core claim
+
+Continuity should be enforced by the runtime,
+not reconstructed after failure.
+
+---
+
+Quick start (1 command)
 
 Run the core demo:
 
-```
 go run ./cmd/migration_demo/main.go
-```
 
 Expected:
 
@@ -15,127 +36,79 @@ Expected:
 
 ---
 
-## Mental model
+Mental model
 
-```
 session != connection
 
 session = identity
 transport = attachment
 failure = runtime event
-```
 
 This system does not "reconnect".
 
-It **rebinds the session to a new transport**.
+It rebinds the session to a new transport.
 
 ---
 
-# Continuity Runtime Demo
+What this is
 
-> failure ≠ connection death  
-> failure = runtime event  
-> continuity is enforced, not recovered  
-
----
-
-## ⚡ TL;DR
-
-```
-Session identity survives transport death without reconnect.
-```
-
-What this demo proves:
-
-- no reconnect  
-- no state rebuild  
-- same session identity  
-- transport can be replaced live  
-- stale paths are rejected  
-
----
-
-## What this is
-
-An experimental Go prototype exploring **session continuity under transport volatility**.
+An experimental Go prototype exploring session continuity under transport volatility.
 
 Instead of binding identity to a connection, this project models:
 
-- session as the primary object  
-- transport as replaceable  
-- continuity as invariant  
+- session as the primary object
+- transport as replaceable
+- continuity as invariant
 
 ---
 
-## 🧠 Mental model
+Architecture
+
+"Continuity Runtime" (docs/architecture.png)
+
+---
+
+Core idea
 
 Traditional systems:
 
-```
-connection = identity
-```
-
-→ when connection dies → identity dies  
-
----
-
-Continuity Runtime:
-
-```
-session != transport
-```
-
-→ transport can die → session survives  
-
----
-
-## Architecture
-
-![Continuity Runtime](docs/architecture.png)
-
----
-
-## Core idea
-
-Traditional systems:
-
-- connection drops  
-- reconnect required  
-- session reset  
+- connection drops
+- reconnect required
+- session reset
 
 This approach:
 
-- failure is a runtime event  
-- system evaluates alternatives  
-- authority is transferred (epoch-based)  
-- stale path is rejected  
-- session continues  
+- failure is a runtime event
+- system evaluates alternatives
+- authority is transferred (epoch-based)
+- stale path is rejected
+- session continues
 
 ---
 
-## Core invariants
+Core invariants
 
 These properties define the system behavior:
 
-- **Session identity survives transport death**
-- **Only one authority per epoch**
-- **Authority is monotonic (no rollback)**
-- **Stale transports must not revive**
-- **Continuity > optimality**
+- Session identity survives transport death
+- Only one authority per epoch
+- Authority is monotonic (no rollback)
+- Stale transports must not revive
+- Continuity > optimality
 
 This is not an implementation detail — this is the contract.
 
 ---
 
-## Runtime model (decision layer)
+Runtime model (decision layer)
 
 The system does NOT react to raw signals directly.
 
-Instead it operates through **filtered, time-aware decisions**.
+Instead it operates through filtered, time-aware decisions.
 
 ---
 
-### Signal processing
+Signal processing
 
 Raw network signals are noisy.
 
@@ -147,379 +120,299 @@ We convert them into stable signals:
 
 Goal:
 
-```
 react to trends, not spikes
-```
 
 ---
 
-### State model
+State model
 
-```
 HEALTHY → DEGRADED → FAILED
-```
 
 Transitions are NOT instantaneous.
 
 They require:
 
-- K consecutive bad samples  
-- time window validation  
-- confidence threshold  
+- K consecutive bad samples
+- time window validation
+- confidence threshold
 
 ---
 
-### Hysteresis (anti-flapping)
+Hysteresis (anti-flapping)
 
 We intentionally introduce asymmetry:
 
-- degrade → fast  
-- recover → slow  
+- degrade → fast
+- recover → slow
 
 Example:
 
-```
 enter DEGRADED: 3 bad samples over 3s
 enter FAILED: N missed heartbeats
 recover: 10–30s stable window
-```
 
 Goal:
 
-```
 avoid oscillation under unstable conditions
-```
 
 ---
 
-### Decision engine
+Decision engine
 
 Instead of binary logic:
 
-```
 score(path) + confidence → decision
-```
 
 Where:
 
-- score = latency + loss + stability  
-- confidence = signal consistency over time  
+- score = latency + loss + stability
+- confidence = signal consistency over time
 
 Migration condition:
 
-```
 new_path_score - current_score > margin
 AND confidence is high
-```
 
 This makes decisions:
 
-- explainable  
-- testable  
-- reproducible  
+- explainable
+- testable
+- reproducible
 
 ---
 
-## What is implemented
+What is implemented
 
-### Runtime
+Runtime
 
-- state machine (ATTACHED → RECOVERING)  
-- decision engine (score / confidence)  
-- migration trigger  
-- authority handoff (epoch model)  
-- stale transport rejection  
-- hysteresis + time-window gating  
-- EWMA-based signal smoothing  
-
----
-
-### Protocol
-
-- wire packet format  
-- versioning  
-- replay protection  
-- sequence window validation  
-- session init / init ack  
-- authority transfer  
-- keepalive  
-- close  
+- state machine (ATTACHED → RECOVERING)
+- decision engine (score / confidence)
+- migration trigger
+- authority handoff (epoch model)
+- stale transport rejection
+- hysteresis + time-window gating
+- EWMA-based signal smoothing
 
 ---
 
-### Reliability
+Protocol
 
-- ACK flow  
-- retransmission policy  
-- timeout policy  
-
----
-
-### Simulation
-
-- multiple transports (wifi / 5g / lte)  
-- latency + jitter  
-- packet loss  
-- packet duplication  
-- lossy exchange  
-- two-node interaction  
+- wire packet format
+- versioning
+- replay protection
+- sequence window validation
+- session init / init ack
+- authority transfer
+- keepalive
+- close
 
 ---
 
-### Observability
+Reliability
 
-Designed for **decision explainability**:
+- ACK flow
+- retransmission policy
+- timeout policy
 
-- structured trace  
-- timeline replay  
-- invariant checks  
-- decision logs  
+---
+
+Simulation
+
+- multiple transports (wifi / 5g / lte)
+- latency + jitter
+- packet loss
+- packet duplication
+- lossy exchange
+- two-node interaction
+
+---
+
+Observability
+
+Designed for decision explainability:
+
+- structured trace
+- timeline replay
+- invariant checks
+- decision logs
 
 Example:
 
-```
 [EVENT] WiFi degraded
 [SIGNAL] rtt_ewma=182ms loss=0.12
 [DECISION] migrate=true (margin=87.8, confidence=0.94)
 [AUTHORITY] epoch 2 granted to 5G
 [CHECK] stale WiFi rejected
-```
 
 ---
 
-## 🚀 Demos
+🚀 Demos
 
-### Handshake
-```
+Handshake
+
 go run ./cmd/handshake_demo/main.go
-```
-
-Shows:
-
-- session init  
-- init ack  
-- keepalive  
-- close  
 
 ---
 
-### Migration (recommended)
-```
+Migration (recommended)
+
 go run ./cmd/migration_demo/main.go
-```
-
-Shows:
-
-- data before failure  
-- WiFi failure event  
-- migration decision  
-- authority transfer  
-- data continues (no reset)  
 
 ---
 
-### Two-node
-```
+Two-node
+
 go run ./cmd/two_node_demo/main.go
-```
-
-Shows:
-
-- two nodes exchanging packets  
-- ACK flow  
-- lossy network behavior  
-- migration + invariants  
 
 ---
 
-## Example output
+Example output
 
-```
 [EVENT] WiFi failed
 [DECISION] migrate=true (margin=87.8, confidence=1.00)
 [AUTHORITY] epoch 2 granted to 5G
 [CHECK] stale WiFi rejected
 [RESULT] session continues
-```
 
 ---
 
-## Key property
+Key property
 
-```
 NO reconnect
 NO session reset
 CONTINUITY PRESERVED
-```
 
 ---
 
-## Why this matters
+Why this matters
 
 This is not about building "another VPN".
 
 The question is:
 
-**Can session continuity be preserved under failure without reconnect?**
+Can session continuity be preserved under failure without reconnect?
 
 If yes → this leads to:
 
-- zero-reset mobile handoff  
-- transport-independent sessions  
-- next-gen VPN / overlay models  
-- runtime-driven networking  
+- zero-reset mobile handoff
+- transport-independent sessions
+- next-gen VPN / overlay models
+- runtime-driven networking
 
 ---
 
-## Why this is hard
+Why this is hard
 
 Real networks are:
 
-- noisy (RTT spikes)  
-- unstable (loss bursts)  
-- inconsistent (NAT rebinding)  
+- noisy
+- unstable
+- inconsistent
 
 Naive systems:
 
-```
 react too fast → flapping
 react too slow → long recovery
-```
 
 This project explores:
 
-```
 controlled, explainable decision-making under uncertainty
-```
 
 ---
 
-## What makes this different
+What makes this different
 
 Most systems:
 
-- recover after failure  
+- recover after failure
 
 This model:
 
-- avoids breaking the session in the first place  
-
-It is closer to:
-
-- session migration  
-- authority transfer  
-- runtime-controlled networking  
-
-Not:
-
-- retry logic  
-- reconnect loops  
+- avoids breaking the session in the first place
 
 ---
 
-## Relation to existing systems
+Relation to existing systems
 
-This problem space overlaps with:
+- QUIC (connection migration)
+- MPTCP (multipath)
+- WireGuard (roaming)
 
-- QUIC (connection migration)  
-- MPTCP (multipath)  
-- WireGuard (roaming)  
-
-But differs in one key aspect:
-
-> continuity is a **first-class invariant**, not a side-effect  
+«continuity is a first-class invariant, not a side-effect»
 
 ---
 
-## Status
+Design stance
+
+Most systems optimize for:
+
+- throughput
+- latency
+
+This system prioritizes:
+
+- continuity
+- stability
+- explainability
+
+---
+
+Status
 
 Early prototype.
 
-What it is:
+---
 
-- protocol + runtime model  
-- research-grade implementation  
-- traceable + testable  
+Next steps
 
-What it is not:
-
-- production VPN  
-- production crypto  
-- congestion-controlled stack  
+- real UDP / QUIC transport
+- retransmission improvements
+- packet scheduling
+- adaptive hysteresis tuning
+- formal protocol spec
 
 ---
 
-## Next steps
+Direction
 
-- real UDP / QUIC transport  
-- retransmission improvements  
-- packet scheduling  
-- adaptive hysteresis tuning  
-- formal protocol spec  
-- protocol diagrams (flow, packet-level)  
-
----
-
-## Direction
-
-This repo is evolving:
-
-```
 demo → runtime → protocol → architecture
-```
 
 ---
 
-## Feedback
+Feedback
 
 Looking for:
 
-- protocol flaws  
-- edge cases  
-- invariant violations  
-- migration race conditions  
-- replay / stale-path issues  
-- instability / flapping scenarios  
+- protocol flaws
+- edge cases
+- invariant violations
+- migration race conditions
 
 ---
 
-## 📦 Project structure
+📦 Project structure
 
-```
 LICENSE
 SECURITY.md
 CONTRIBUTING.md
 ROADMAP.md
 SUPPORT.md
 docs/
-```
 
 ---
 
-## 🧬 Protocol invariants
+🧬 Protocol invariants
 
-See:
-
-```
 docs/INVARIANTS.md
-```
 
 ---
 
-## 🔬 Flagship demo
+🔬 Flagship demo
 
-See:
-
-```
 docs/FLAGSHIP_DEMO.md
-```
 
 ---
 
-## ❤️ Support
+❤️ Support
 
-See:
-
-```
 SUPPORT.md
-```
