@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Endless33/continuity-runtime-demo/main/docs/banner.png" alt="Continuity Runtime Architecture (Session != Transport)" width="800"/>
-</p>
-
 <h1 align="center">Jumping VPN — Continuity Runtime</h1>
 
 <p align="center">
@@ -39,7 +35,7 @@ Transport dies → runtime reacts → authority transfers → session continues.
 
 ---
 
-## Architecture
+## Architecture (alt view)
 
 ![Continuity Runtime](docs/architecture.png)
 
