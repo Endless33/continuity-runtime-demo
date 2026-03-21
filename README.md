@@ -1,16 +1,25 @@
-Continuity Runtime Demo
+<p align="center">
+  <img src="https://files.catbox.moe/4v2p9q.png" alt="Jumping VPN Continuum Banner" width="800"/>
+</p><h1 align="center">Jumping VPN — Continuity Runtime</h1><p align="center">
+  <strong>Session survives transport death.<br>
+  Continuity is enforced, not recovered.</strong>
+</p><p align="center">
+  <a href="https://github.com/Endless33/jumping-vpn-preview/stargazers">
+    <img src="https://img.shields.io/github/stars/Endless33/jumping-vpn-preview?style=social" alt="Stars">
+  </a>
+  <a href="https://github.com/Endless33/jumping-vpn-preview/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/Endless33/jumping-vpn-preview" alt="License">
+  </a>
+  <a href="https://go.dev">
+    <img src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white" alt="Go">
+  </a>
+</p>---
 
-«failure ≠ connection death
-failure = runtime event
-continuity is enforced, not recovered»
+TL;DR — The Core Idea in One Sentence
 
----
+Identity must survive transport failure — no reconnect, no reset, no session rebuild.
 
-⚡ TL;DR
-
-session survives transport death
-no reconnect
-no reset
+Transport dies → runtime reacts → authority transfers → session continues.
 
 ---
 
@@ -22,8 +31,6 @@ not reconstructed after failure.
 ---
 
 Quick start (1 command)
-
-Run the core demo:
 
 go run ./cmd/migration_demo/main.go
 
@@ -47,6 +54,22 @@ failure = runtime event
 This system does not "reconnect".
 
 It rebinds the session to a new transport.
+
+---
+
+Continuity Runtime Demo
+
+«failure ≠ connection death
+failure = runtime event
+continuity is enforced, not recovered»
+
+---
+
+⚡ TL;DR
+
+session survives transport death
+no reconnect
+no reset
 
 ---
 
@@ -173,12 +196,6 @@ Migration condition:
 new_path_score - current_score > margin
 AND confidence is high
 
-This makes decisions:
-
-- explainable
-- testable
-- reproducible
-
 ---
 
 What is implemented
@@ -292,64 +309,26 @@ The question is:
 
 Can session continuity be preserved under failure without reconnect?
 
-If yes → this leads to:
-
-- zero-reset mobile handoff
-- transport-independent sessions
-- next-gen VPN / overlay models
-- runtime-driven networking
-
 ---
 
 Why this is hard
 
-Real networks are:
-
-- noisy
-- unstable
-- inconsistent
-
-Naive systems:
-
 react too fast → flapping
 react too slow → long recovery
-
-This project explores:
-
-controlled, explainable decision-making under uncertainty
-
----
-
-What makes this different
-
-Most systems:
-
-- recover after failure
-
-This model:
-
-- avoids breaking the session in the first place
 
 ---
 
 Relation to existing systems
 
-- QUIC (connection migration)
-- MPTCP (multipath)
-- WireGuard (roaming)
+- QUIC
+- MPTCP
+- WireGuard
 
 «continuity is a first-class invariant, not a side-effect»
 
 ---
 
 Design stance
-
-Most systems optimize for:
-
-- throughput
-- latency
-
-This system prioritizes:
 
 - continuity
 - stability
@@ -365,28 +344,9 @@ Early prototype.
 
 Next steps
 
-- real UDP / QUIC transport
+- QUIC transport
 - retransmission improvements
-- packet scheduling
-- adaptive hysteresis tuning
-- formal protocol spec
-
----
-
-Direction
-
-demo → runtime → protocol → architecture
-
----
-
-Feedback
-
-Looking for:
-
-- protocol flaws
-- edge cases
-- invariant violations
-- migration race conditions
+- adaptive hysteresis
 
 ---
 
