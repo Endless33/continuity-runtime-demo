@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/Continuity%20Runtime%20Model.png" alt="Continuity Runtime Architecture (Session ≠ Transport)" width="800"/>
+  <img src="https://raw.githubusercontent.com/Endless33/continuity-runtime-demo/main/docs/banner.png" alt="Continuity Runtime Architecture (Session != Transport)" width="800"/>
 </p>
 
 <h1 align="center">Jumping VPN — Continuity Runtime</h1>
