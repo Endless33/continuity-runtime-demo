@@ -1,9 +1,15 @@
 <p align="center">
-  <img src="https://files.catbox.moe/4v2p9q.png" alt="Jumping VPN Continuum Banner" width="800"/>
-</p><h1 align="center">Jumping VPN — Continuity Runtime</h1><p align="center">
+  <img src="docs/Continuity%20Runtime%20Model.png" alt="Continuity Runtime Architecture (Session ≠ Transport)" width="800"/>
+</p>
+
+<h1 align="center">Jumping VPN — Continuity Runtime</h1>
+
+<p align="center">
   <strong>Session survives transport death.<br>
   Continuity is enforced, not recovered.</strong>
-</p><p align="center">
+</p>
+
+<p align="center">
   <a href="https://github.com/Endless33/jumping-vpn-preview/stargazers">
     <img src="https://img.shields.io/github/stars/Endless33/jumping-vpn-preview?style=social" alt="Stars">
   </a>
@@ -13,11 +19,13 @@
   <a href="https://go.dev">
     <img src="https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white" alt="Go">
   </a>
-</p>---
+</p>
 
-TL;DR — The Core Idea in One Sentence
+---
 
-Identity must survive transport failure — no reconnect, no reset, no session rebuild.
+## TL;DR — The Core Idea in One Sentence
+
+**Identity must survive transport failure — no reconnect, no reset, no session rebuild.**
 
 Transport dies → runtime reacts → authority transfers → session continues.
 
@@ -25,20 +33,24 @@ Transport dies → runtime reacts → authority transfers → session continues.
 
 ## Architecture
 
-![Continuity Runtime](docs/architecture.png)
+![Continuity Runtime Architecture (Session ≠ Transport)](docs/Continuity%20Runtime%20Model.png)
+
+*Continuity Runtime Architecture (Session ≠ Transport)*
 
 ---
 
-Core claim
+## Core claim
 
-Continuity should be enforced by the runtime,
+Continuity should be enforced by the runtime,  
 not reconstructed after failure.
 
 ---
 
-Quick start (1 command)
+## Quick start (1 command)
 
+```bash
 go run ./cmd/migration_demo/main.go
+```
 
 Expected:
 
@@ -49,39 +61,43 @@ Expected:
 
 ---
 
-Mental model
+## Mental model
 
+```text
 session != connection
 
 session = identity
 transport = attachment
 failure = runtime event
+```
 
 This system does not "reconnect".
 
-It rebinds the session to a new transport.
+It **rebinds the session to a new transport**.
 
 ---
 
-Continuity Runtime Demo
+# Continuity Runtime Demo
 
-«failure ≠ connection death
-failure = runtime event
-continuity is enforced, not recovered»
+> failure ≠ connection death  
+> failure = runtime event  
+> continuity is enforced, not recovered
 
 ---
 
-⚡ TL;DR
+## ⚡ TL;DR
 
+```text
 session survives transport death
 no reconnect
 no reset
+```
 
 ---
 
-What this is
+## What this is
 
-An experimental Go prototype exploring session continuity under transport volatility.
+An experimental Go prototype exploring **session continuity under transport volatility**.
 
 Instead of binding identity to a connection, this project models:
 
@@ -91,13 +107,7 @@ Instead of binding identity to a connection, this project models:
 
 ---
 
-Architecture
-
-"Continuity Runtime" (docs/architecture.png)
-
----
-
-Core idea
+## Core idea
 
 Traditional systems:
 
@@ -115,29 +125,29 @@ This approach:
 
 ---
 
-Core invariants
+## Core invariants
 
 These properties define the system behavior:
 
-- Session identity survives transport death
-- Only one authority per epoch
-- Authority is monotonic (no rollback)
-- Stale transports must not revive
-- Continuity > optimality
+- **Session identity survives transport death**
+- **Only one authority per epoch**
+- **Authority is monotonic (no rollback)**
+- **Stale transports must not revive**
+- **Continuity > optimality**
 
 This is not an implementation detail — this is the contract.
 
 ---
 
-Runtime model (decision layer)
+## Runtime model (decision layer)
 
-The system does NOT react to raw signals directly.
+The system does **NOT** react to raw signals directly.
 
-Instead it operates through filtered, time-aware decisions.
+Instead it operates through **filtered, time-aware decisions**.
 
 ---
 
-Signal processing
+### Signal processing
 
 Raw network signals are noisy.
 
@@ -149,15 +159,19 @@ We convert them into stable signals:
 
 Goal:
 
+```text
 react to trends, not spikes
+```
 
 ---
 
-State model
+### State model
 
+```text
 HEALTHY → DEGRADED → FAILED
+```
 
-Transitions are NOT instantaneous.
+Transitions are **NOT** instantaneous.
 
 They require:
 
@@ -167,7 +181,7 @@ They require:
 
 ---
 
-Hysteresis (anti-flapping)
+### Hysteresis (anti-flapping)
 
 We intentionally introduce asymmetry:
 
@@ -176,21 +190,27 @@ We intentionally introduce asymmetry:
 
 Example:
 
+```text
 enter DEGRADED: 3 bad samples over 3s
 enter FAILED: N missed heartbeats
 recover: 10–30s stable window
+```
 
 Goal:
 
+```text
 avoid oscillation under unstable conditions
+```
 
 ---
 
-Decision engine
+### Decision engine
 
 Instead of binary logic:
 
+```text
 score(path) + confidence → decision
+```
 
 Where:
 
@@ -199,14 +219,16 @@ Where:
 
 Migration condition:
 
+```text
 new_path_score - current_score > margin
 AND confidence is high
+```
 
 ---
 
-What is implemented
+## What is implemented
 
-Runtime
+### Runtime
 
 - state machine (ATTACHED → RECOVERING)
 - decision engine (score / confidence)
@@ -218,7 +240,7 @@ Runtime
 
 ---
 
-Protocol
+### Protocol
 
 - wire packet format
 - versioning
@@ -231,7 +253,7 @@ Protocol
 
 ---
 
-Reliability
+### Reliability
 
 - ACK flow
 - retransmission policy
@@ -239,7 +261,7 @@ Reliability
 
 ---
 
-Simulation
+### Simulation
 
 - multiple transports (wifi / 5g / lte)
 - latency + jitter
@@ -250,7 +272,7 @@ Simulation
 
 ---
 
-Observability
+### Observability
 
 Designed for decision explainability:
 
@@ -261,80 +283,94 @@ Designed for decision explainability:
 
 Example:
 
+```text
 [EVENT] WiFi degraded
 [SIGNAL] rtt_ewma=182ms loss=0.12
 [DECISION] migrate=true (margin=87.8, confidence=0.94)
 [AUTHORITY] epoch 2 granted to 5G
 [CHECK] stale WiFi rejected
+```
 
 ---
 
-🚀 Demos
+## 🚀 Demos
 
-Handshake
+### Handshake
 
+```bash
 go run ./cmd/handshake_demo/main.go
+```
 
 ---
 
-Migration (recommended)
+### Migration (recommended)
 
+```bash
 go run ./cmd/migration_demo/main.go
+```
 
 ---
 
-Two-node
+### Two-node
 
+```bash
 go run ./cmd/two_node_demo/main.go
+```
 
 ---
 
-Example output
+## Example output
 
+```text
 [EVENT] WiFi failed
 [DECISION] migrate=true (margin=87.8, confidence=1.00)
 [AUTHORITY] epoch 2 granted to 5G
 [CHECK] stale WiFi rejected
 [RESULT] session continues
+```
 
 ---
 
-Key property
+## Key property
 
+```text
 NO reconnect
 NO session reset
 CONTINUITY PRESERVED
+```
 
 ---
 
-Why this matters
+## Why this matters
 
 This is not about building "another VPN".
 
 The question is:
 
-Can session continuity be preserved under failure without reconnect?
+**Can session continuity be preserved under failure without reconnect?**
 
 ---
 
-Why this is hard
+## Why this is hard
 
+```text
 react too fast → flapping
 react too slow → long recovery
+```
 
 ---
 
-Relation to existing systems
+## Relation to existing systems
 
 - QUIC
 - MPTCP
 - WireGuard
 
-«continuity is a first-class invariant, not a side-effect»
+> continuity is a first-class invariant, not a side-effect
 
 ---
 
-Design stance
+## Design stance
 
 - continuity
 - stability
@@ -342,13 +378,13 @@ Design stance
 
 ---
 
-Status
+## Status
 
 Early prototype.
 
 ---
 
-Next steps
+## Next steps
 
 - QUIC transport
 - retransmission improvements
@@ -356,29 +392,37 @@ Next steps
 
 ---
 
-📦 Project structure
+## 📦 Project structure
 
+```text
 LICENSE
 SECURITY.md
 CONTRIBUTING.md
 ROADMAP.md
 SUPPORT.md
 docs/
+```
 
 ---
 
-🧬 Protocol invariants
+## 🧬 Protocol invariants
 
+```text
 docs/INVARIANTS.md
+```
 
 ---
 
-🔬 Flagship demo
+## 🔬 Flagship demo
 
+```text
 docs/FLAGSHIP_DEMO.md
+```
 
 ---
 
-❤️ Support
+## ❤️ Support
 
+```text
 SUPPORT.md
+```
