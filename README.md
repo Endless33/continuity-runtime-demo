@@ -1,3 +1,20 @@
+## Quick start (1 command)
+
+Run the core demo:
+
+```
+go run ./cmd/migration_demo/main.go
+```
+
+Expected:
+
+- WiFi fails
+- system detects degradation
+- migration happens
+- session continues (no reset)
+
+---
+
 # Continuity Runtime Demo
 
 > failure ≠ connection death  
